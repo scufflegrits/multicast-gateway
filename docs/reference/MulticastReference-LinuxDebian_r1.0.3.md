@@ -897,8 +897,9 @@ still show what the VM sends and receives after filtering. Proxmox VE also
 provides an nftables-based firewall implementation (`proxmox-firewall`) as an
 option; rules are written in the same `.fw` files either way.
 
-For the host's own firewall rules (FORWARD chain checks for bridged traffic),
-see the host checks in section 3.3.
+For the host's own filtering of bridged traffic (bridge-, netdev- and, with
+`br_netfilter`, IP-family rules), see the host checks in
+[3.3](#33-multicast-interface-selection-on-multi-homed-machines).
 
 ---
 
@@ -1687,7 +1688,7 @@ itself does not need to join the group to send — only receivers join.
 ```
 VM sends UDP to 239.1.1.1
     ↓ tap101i0 (multicast frame exits VM)
-    ↓ vmbr999 (bridge forwards to bond999, no snooping interference)
+    ↓ vmbr999 (flooded to bond999, or via its learned router port with snooping)
     ↓ bond999 (LACP bond delivers to SWITCH01 Po4)
     ↓ SWITCH01 (IGMP snooping table shows Po4 as receiver for 239.1.1.1)
     ↓ SWITCH01 forwards to SWITCH02 trunk (Gi1/0/46)
@@ -1844,8 +1845,12 @@ wrong, the VM NIC configuration does not match.
 
 Symptom: Multicast delivery works after joining but stops after 60–300 seconds.
 
-This is almost always caused by IGMP membership timeout without query refresh.
-The switch's querier is either not active or not reaching the VM.
+A common hypothesis is membership aging without query refresh: the querier is
+not active, or its queries or the VM's reports are not crossing the path. Other
+candidates include querier or snooping state changes, the application leaving
+the group, and bridge snooping state on vmbr999. Correlate local joins, captures
+spanning complete query intervals, and switch and bridge state before settling
+on a cause.
 
 Step 1 — Verify the querier is active on SWITCH01:
 
