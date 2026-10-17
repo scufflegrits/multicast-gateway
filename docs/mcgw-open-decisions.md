@@ -13,6 +13,7 @@ replace the agreed [architecture](architecture.md).
 | Evidence before resolution | Record test results, measurements, sources, and owner clarification as appropriate |
 | Resolution | Record chosen option, rationale, date, and authoritative document changes |
 | Preserve history | Retain resolved entries; do not delete rejected alternatives |
+| Nice-to-haves | Optional improvements v1 can ship without go in the [feature ideas backlog](mcgw-feature-ideas.md), not here |
 | Sources | `temp.md` is a review input, not verified authority; validate technical claims using primary sources and selected deployment versions |
 
 | Status | Meaning |

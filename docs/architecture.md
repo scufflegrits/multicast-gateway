@@ -690,7 +690,8 @@ acknowledgments and cooperating receivers are outside deployment requirements.
 
 ## 10. Deferred capabilities
 
-No schedule or compatibility promise is implied by this table.
+No schedule or compatibility promise is implied by this table. Smaller optional
+improvements are tracked in the [feature ideas backlog](mcgw-feature-ideas.md).
 
 | Capability | Design work required before adding it |
 |---|---|
