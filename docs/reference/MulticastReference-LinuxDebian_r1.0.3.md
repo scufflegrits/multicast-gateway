@@ -28,6 +28,7 @@ outside this guide. mcgw itself retains its separate IPv4/IPv6 design scope.
 
 | Version | Date     | Author   | Change Summary                                                                          |
 |---------|----------|----------|-----------------------------------------------------------------------------------------|
+| Review 2 | 20261017 | scufflegrits | Second review corrections (F01, F02, F06, F21, F22); see architecture review §7 |
 | Review | 20261017 | scufflegrits | IPv4-only scope; technical corrections, clickable navigation, acronym and verification-source appendices; filename/version retained |
 | 1.0.3   | 20261016 | sysadmin | Section 11 deep dive fully written (11.1–11.7) and extended with 11.8 socket-level controls and 11.9 deep dive troubleshooting; added 3.4 firewalls (guest nftables/ufw, Proxmox VM firewall); added troubleshooting 10.6 and 10.7; glossary additions |
 | 1.0.2   | 20261016 | sysadmin | Technical corrections: iperf3 replaced (sections 5.3 and 6.2 retitled) with iperf (iperf2) for multicast; mcjoin flags corrected (-v, -l, -r); pimd dense-mode claims removed; smcroute SSM and same-interface forwarding corrected; /proc/net/igmp conversion example fixed; IGMP timeout arithmetic fixed; rp_filter/iptables scope on the Proxmox bridge clarified; 11.4 limit description corrected; platform note updated; filename field and section 11 TOC link fixed |

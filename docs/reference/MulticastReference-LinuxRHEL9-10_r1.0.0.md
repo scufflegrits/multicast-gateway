@@ -28,6 +28,7 @@ outside this guide. mcgw itself retains its separate IPv4/IPv6 design scope.
 
 | Version | Date     | Author   | Change Summary                                                                 |
 |---------|----------|----------|--------------------------------------------------------------------------------|
+| Review 2 | 20261017 | scufflegrits | Second review corrections (F22); see architecture review §7 |
 | Review | 20261017 | scufflegrits | IPv4-only scope; technical corrections, clickable navigation, acronym and verification-source appendices; filename/version retained |
 | 1.0.0   | 20261016 | sysadmin | Initial release. Covers RHEL 9 and RHEL 10 on bare metal and as VMware vSphere 9 guests |
 

@@ -723,6 +723,34 @@ technical assertions are not adopted automatically.
 | Architecture owns behavior | Primer/README/runbook may summarize but cannot change a guarantee |
 | Link/structure checks | Run `python3 scripts/check-docs.py`; rendered appearance still needs viewer verification |
 
+## 7. Second review dispositions
+
+Source: repository-root `temp2.md` (locally ignored), reviewing commit `803ba92`.
+IDs F01–F22 correspond to that input. As in section 6, a disposition records a
+documentation change or a tracked gate; it is not device, renderer or runtime
+qualification, which remains outstanding (work-order step 7).
+
+| Finding IDs | Disposition | Location | Action |
+|---|---|---|---|
+| F01 | Documented | Debian guide §3.3 host checks | Native bridge/netdev filtering does not require `br_netfilter`; the host filter check is never skipped |
+| F02 | Documented | Debian guide §3.3, §9.1, §10.2, §10.3 | Snooping 1 is a valid policy; diagnose queries, MDB, router ports and VLANs; flooding is a deliberate alternative; rp_filter scoped to the host IP path |
+| F03 | Documented | Windows guide §9.1, §10.1 | Inspect the full IPv4 table and the route covering the actual group; no automatic 239/8 claim |
+| F04 | Documented | Cisco guide §7 | RSPAN is not a complete original-wire record; vendor SPAN/RSPAN source added |
+| F05 | Documented; build unqualified | Windows guide §10.2, §10.5 | Documented `-Profile`; disable test restores original states in `finally`; logging settings recorded first |
+| F06 | Documented | Debian guide §3.3, §10.2 | Complete rulesets/counters and owning manager; no broad ACCEPT/delete |
+| F07 | Documented; lab extension unqualified | Cisco guide §7.2–7.3 | Destination-session construction documented; direct VM transport-VLAN consumption labeled with validation points |
+| F08 | Documented | Windows guide §10.3, §10.4 | Missing reports, timed loss and process exit treated as hypotheses |
+| F09 | Documented | Windows guide §10.5 | Explicit block overrides allow regardless of specificity |
+| F10 | Documented; numeric defaults open | Architecture §5 journal events; deployment logging; OD-08, OD-12 | Bounded independent logging, counted overflow, whole records, finite flush |
+| F11 | Documented; numeric defaults open | Architecture §5 health/status; OD-12, OD-15 | Management resource/time bounds and snapshot isolation |
+| F12 | Documented | Architecture §5 reload diagram | Preparation-failure branch keeps active configuration; no new atomicity promise |
+| F13, F14 | Documented | Troubleshooting retained evidence captures | Quick checks labeled; bounded retained pcap with fragment-preserving filters and handling |
+| F15 | Documented | Troubleshooting IPv6 checks | Compact IPv6 counterpart; reference guides stay IPv4-only |
+| F16 | Documented | Deployment prerequisites | rp_filter effective value is the maximum numeric mode |
+| F17 | Documented | OD-02 | Interim all-configured-required rule repeated |
+| F18, F19 | Implemented | `scripts/check-docs.py`, `scripts/test_check_docs.py` | Shared fence scanner, decoded links, temporary-repository regressions |
+| F20–F22 | Documented | Concepts §4; reference guides | Section moved; prose cleaned; cross-guide references linked |
+
 ## Appendix A — Online research sources
 
 Accessed 2026-10-16. These primary technical references support Linux/transport
