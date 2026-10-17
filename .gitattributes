@@ -1,0 +1,28 @@
+# Detect text automatically; normalize text files to LF on every platform.
+* text=auto eol=lf
+
+# Keep documentation, configuration, and scripts explicitly textual.
+*.md text eol=lf
+*.txt text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.service text eol=lf
+*.svg text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Do not normalize or produce text diffs for captures and binary assets.
+*.pcap binary
+*.pcapng binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.gz binary
+*.zip binary
