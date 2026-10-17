@@ -185,7 +185,7 @@ replace the agreed [architecture](architecture.md).
 | Evidence needed | Test same-port groups, same-group interfaces, unrelated host joins, wrong-interface injection, source mismatch, permitted local senders, and network membership-version compatibility. Record supported kernels/APIs. |
 | Tests | [T-MCI-01 to T-MCI-06](mcgw-test-plan.md#mci--multicast-isolation), T-ACC-02, T-LIFE-01 |
 | Context | Architecture §§3, 6, 8; review D9; temp.md N1, N3, D-3 |
-| Investigation results | Not yet recorded |
+| Investigation results | Prototype ready, not yet run: [prototypes/od09-isolation](../prototypes/od09-isolation/README.md) runs T-MCI-01..05 per option set on Debian 13 and RHEL 9/10 |
 | Resolution | Pending; current position remains in force |
 
 ## OD-10

@@ -56,7 +56,8 @@ reach the behavior.
 ## Shared environment
 
 Integration cases reuse one topology, `ENV`. Addresses follow the architecture's
-configuration example.
+configuration example. It is implemented by `test/netns/env.sh`; machine setup is
+in [test/README.md](../test/README.md).
 
 ```text
 ENV

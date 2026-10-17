@@ -54,7 +54,8 @@ def headings(text):
 
 
 def check(root):
-    files = [root / 'README.md', *sorted((root / 'docs').rglob('*.md'))]
+    files = [root / 'README.md',
+             *(path for top in ('docs', 'test', 'prototypes') for path in sorted((root / top).rglob('*.md')))]
     errors = []
     for path in files:
         text = path.read_text(encoding='utf-8')

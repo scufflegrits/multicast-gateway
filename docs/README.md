@@ -67,6 +67,7 @@ terms are explained in Concepts and the architecture acronym appendix.
 | [Deployment planning](mcgw-deployment.md) | Host/network prerequisites, lifecycle integration, hardening, logging collection, and site qualification |
 | [Open decisions](mcgw-open-decisions.md) | Track unresolved proposals, current positions, alternatives, evidence needed, decision gates, and resolutions |
 | [Test plan](mcgw-test-plan.md) | Test cases written before code: levels, shared namespace environment, pseudocode cases, traceability, blockers and contract gaps |
+| [Test machine setup](../test/README.md) | Prepare a Debian 13 or RHEL 9/10 machine to build the test tools and run the namespace environment and prototypes |
 | [Feature ideas](mcgw-feature-ideas.md) | Nice-to-have backlog: optional improvements, their value, constraints and gates; not v1 scope |
 | [Architecture review](architecture-review.md) | Preserve review history, accepted recommendations, justifications, and research sources; architecture.md is authoritative for current decisions |
 

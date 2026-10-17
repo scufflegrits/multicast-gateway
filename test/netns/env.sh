@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# Create, inspect or remove the test plan's shared environment (ENV).
+# Everything lives in network namespaces prefixed mcgw-; host interfaces,
+# routes and firewall rules are not touched.
+#
+# Usage: sudo test/netns/env.sh up | down | status
+set -euo pipefail
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=lib.sh
+source "$here/lib.sh"
+
+# veth NS1 IF1 NS2 IF2 creates a veth pair directly inside two namespaces.
+veth() {
+    ip link add "$2" netns "$1" type veth peer name "$4" netns "$3"
+    ip -n "$1" link set "$2" up
+    ip -n "$3" link set "$4" up
+}
+
+addr() { ip -n "$1" addr add "$3" dev "$2"; }
+
+up() {
+    if ip netns list | grep -q '^mcgw-'; then
+        echo "error: mcgw- namespaces already exist; run '$0 down' first" >&2
+        exit 1
+    fi
+    for ns in "${MCGW_NAMESPACES[@]}"; do
+        ip netns add "$ns"
+        ip -n "$ns" link set lo up
+    done
+
+    # Ingress: SRC -> GW eth0, SRC2 -> GW eth2
+    veth mcgw-src s0 mcgw-gw eth0
+    veth mcgw-src2 s0 mcgw-gw eth2
+    addr mcgw-src s0 192.168.10.20/24
+    addr mcgw-src s0 192.168.10.21/24
+    addr mcgw-src2 s0 192.168.11.20/24
+    addr mcgw-gw eth0 192.168.10.1/24
+    addr mcgw-gw eth2 192.168.11.1/24
+    for ns in mcgw-src mcgw-src2; do
+        ip -n "$ns" route add 239.0.0.0/8 dev s0
+        ip -n "$ns" route add 232.0.0.0/8 dev s0
+    done
+
+    # Egress: GW eth1 and destinations on bridge br0 in NET (no snooping, no querier)
+    ip -n mcgw-net link add br0 type bridge mcast_snooping 0
+    ip -n mcgw-net link set br0 up
+    veth mcgw-gw eth1 mcgw-net p-gw
+    veth mcgw-dsta eth0 mcgw-net p-dsta
+    veth mcgw-dstb eth0 mcgw-net p-dstb
+    veth mcgw-dstc eth0 mcgw-net p-dstc
+    for port in p-gw p-dsta p-dstb p-dstc; do
+        ip -n mcgw-net link set "$port" master br0
+    done
+    addr mcgw-gw eth1 10.0.20.1/24
+    addr mcgw-dsta eth0 10.0.20.5/24
+    addr mcgw-dstb eth0 10.0.20.6/24
+    addr mcgw-dstc eth0 10.0.20.7/24
+
+    # Constrained-egress path: GW eth3 -> DST_B eth1
+    veth mcgw-gw eth3 mcgw-dstb eth1
+    addr mcgw-gw eth3 10.0.30.1/24
+    addr mcgw-dstb eth1 10.0.30.6/24
+
+    # Loose reverse-path filtering in GW so results do not depend on distro defaults.
+    for key in all default eth0 eth1 eth2 eth3; do
+        nsx mcgw-gw sysctl -qw "net.ipv4.conf.$key.rp_filter=2"
+    done
+    echo "ENV up: ${MCGW_NAMESPACES[*]}"
+}
+
+down() {
+    for ns in "${MCGW_NAMESPACES[@]}"; do
+        ip netns del "$ns" 2>/dev/null || true
+    done
+    echo "ENV down"
+}
+
+status() {
+    ip netns list | grep '^mcgw-' || { echo "ENV not present"; return 0; }
+    for ns in "${MCGW_NAMESPACES[@]}"; do
+        ip netns list | grep -q "^$ns\b" || continue
+        echo "== $ns"
+        ip -n "$ns" -br addr show | grep -v '^lo '
+    done
+    echo "== mcgw-gw rp_filter"
+    nsx mcgw-gw sysctl net.ipv4.conf.all.rp_filter net.ipv4.conf.eth0.rp_filter
+}
+
+require_root
+require_tools ip sysctl
+case "${1:-}" in
+    up) up ;;
+    down) down ;;
+    status) status ;;
+    *) echo "usage: $0 up | down | status" >&2; exit 2 ;;
+esac
