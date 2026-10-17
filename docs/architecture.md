@@ -395,6 +395,8 @@ flowchart TB
     VALID{"Full validation succeeds?"}:::control
     KEEP["Report errors<br/>Keep active configuration"]:::failure
     PREP["Prepare independent resources safely<br/>Leave unchanged routes running"]:::process
+    PREPOK{"Preparation succeeds<br/>within resource budget?"}:::control
+    CLEAN["Release prepared resources<br/>Report rejection"]:::failure
     APPLY["Apply changes<br/>Reuse tested resources when safe<br/>Otherwise interrupt changed route"]:::process
     OK{"Activation succeeds?"}:::control
     ACTIVE["Report active generations<br/>and interruption outcomes"]:::success
@@ -402,7 +404,9 @@ flowchart TB
     RESULT["Report restored or degraded state<br/>Expose mixed generations if necessary"]:::control
     HUP --> VALID
     VALID -- "No" --> KEEP
-    VALID -- "Yes" --> PREP --> APPLY --> OK
+    VALID -- "Yes" --> PREP --> PREPOK
+    PREPOK -- "No" --> CLEAN --> KEEP
+    PREPOK -- "Yes" --> APPLY --> OK
     OK -- "Yes" --> ACTIVE
     OK -- "No" --> ROLLBACK --> RESULT
     TERM["SIGTERM"]:::control
@@ -419,7 +423,9 @@ flowchart TB
 ```
 
 Reload is not promised lossless or globally atomic. Validation cannot reserve
-all activation resources. Desired configuration, per-route active generation,
+all activation resources. Preparation failure, including a reload overlap that
+exceeds the allocation budget (§3), releases prepared resources and rejects the
+reload before activation begins; the active configuration keeps running. Desired configuration, per-route active generation,
 activation failures, and failed rollback remain visible.
 
 ### Health and status
@@ -445,6 +451,8 @@ built-in HTTP authentication/TLS; do not expose the listener to an untrusted WAN
 | Required policy | Pending OD-02, treat every configured ingress receiver/sink as required for aggregate readiness; no optional-component field is promised |
 | Startup policy | Existing fail-start policy remains until OD-01 resolves; bounded initialization waiting remains open |
 | Rejoin | Stale-triggered rejoin disabled by default; any opt-in behavior requires limits/backoff |
+| Management bounds | Bounded concurrent connections and in-flight requests; finite header-read, read, write and idle timeouts; bounded response size and serialization memory. Numeric limits are OD-12/OD-15 work |
+| Snapshot isolation | Responses are built from a snapshot copied under short-held locks; forwarding, control and reload locks are never held while encoding or writing to a client. A slow or stalled client cannot delay forwarding, interface recovery or reload |
 
 ### Journal events and SIEM integration
 
@@ -453,13 +461,17 @@ built-in HTTP authentication/TLS; do not expose the listener to an untrusted WAN
 | Transport | Structured JSON records to stdout/stderr; systemd captures them in journald |
 | Parsing | JSON fields are inside journal `MESSAGE`; they are not native journal fields; the collector must parse them |
 | Severity | Explicit JSON `severity`; do not assume it sets native journal `PRIORITY` |
-| Outage | Error event when a required receiver/sink becomes unavailable; preserve the event even when no traffic is arriving |
+| Outage | Error event when a required receiver/sink becomes unavailable; emit it even when no traffic is arriving (best effort within the logging bounds below) |
 | Recovery | Informational event after local revalidation; no claim of destination delivery |
 | Flapping | Bounded transition logs and periodic suppressed-event/outage summaries; no per-dropped-packet log flood |
 | Event fields | Timestamp, event, severity, reason, host identity, route/sink IDs where applicable, interface name/index, destination, old/new state, configuration generation |
 | Recovery summary | Outage duration and counted affected sink drops; ingress losses before application receipt remain unknown |
 | Collection | Host journal collector forwards records; SIEM owns correlation, alert routing, and notification |
 | Delivery limitation | Journal/collector retention, rate limits, or outages can lose/delay events; metrics and status remain independent local evidence |
+| Logging isolation | Rate limits do not bound a single blocked stdout/stderr write. Records pass through a bounded queue drained by an independent writer; forwarding, control and interface-recovery paths never wait on log output and hold none of their locks during writes |
+| Overflow and failure | A full queue or blocked/broken output drops records with counted overflow and write-failure metrics and a later summary event when output resumes |
+| Record integrity | Each record is serialized and written whole; concurrent records do not interleave |
+| Shutdown flush | Remaining records are flushed within a finite deadline, then abandoned with a count |
 
 Illustrative record; field names will be frozen in the observability contract:
 
@@ -632,7 +644,7 @@ tracks alternatives, tradeoffs, evidence, gates, status, and resolutions.
 | Contract | Completion requirement |
 |---|---|
 | Config | Field names/defaults, source filters, freshness and guard policy, allocation limits |
-| Metrics/status/logs | Names/types, bounded labels, stable IDs, consistent snapshots, JSON status/event schemas, counter continuity, SIEM parsing |
+| Metrics/status/logs | Names/types, bounded labels, stable IDs, consistent snapshots, JSON status/event schemas, counter continuity, SIEM parsing, logging queue and management connection/timeout bounds |
 | Lifecycle | Readiness transitions, watchdog progress, activation/rollback reporting, interface monitor resynchronization and outage/recovery events |
 | Queue/send | Ownership, expiry, bounded/cancellable submission, transient retry policy, drop classification, partial batches, original sink attribution, reload overlap budget |
 | Address handling | Exact SSM prefixes/APIs, scopes, family normalization, broadcast classification |
@@ -669,6 +681,7 @@ tracks alternatives, tradeoffs, evidence, gates, status, and resolutions.
 | Interface recovery | Link down/up, source-address loss, interface deletion/recreation under the same name; monitoring resynchronization |
 | Datagram boundaries | Empty payload, maximum accepted size, one byte over limit; integrity and packet/byte counters |
 | Capacity plan | Before sustained deployment: measured/estimated input rates, bursts, fan-out, shared egress capacity/headroom, queue age/budget, and any pacing policy |
+| Management and logging isolation | Stalled and slow HTTP clients, concurrent scrapes, and blocked or broken stdout/stderr during traffic, reload and interface recovery: forwarding and recovery continue, overflow is counted, shutdown stays finite |
 | SIEM | Collector parses JSON messages; outage/recovery alerts and suppression summaries verified, including when input is idle |
 
 mcgw does not automatically change host routes, sysctls, or firewall rules.

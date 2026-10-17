@@ -83,6 +83,7 @@ which transitions each consumer observes.
 | Severity | Currently JSON-only; `journalctl -p err` is not a reliable JSON-severity filter. Native priority mapping remains OD-08 |
 | Collection | Parse message JSON, preserve host/config/route/sink identity, test outage and recovery alerts |
 | Volume | Bound repeated events; inspect journal/service/collector rate limits and retention; suppressed/lost records are possible |
+| Isolation | Blocked or broken log output must not stall forwarding or interface recovery; test it and check the overflow/write-failure counters ([architecture §5](architecture.md#journal-events-and-siem-integration)) |
 | Privacy | Bound diagnostic captures and retain payloads only as needed |
 
 ## Qualification and acceptance

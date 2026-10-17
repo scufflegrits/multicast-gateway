@@ -157,7 +157,7 @@ replace the agreed [architecture](architecture.md).
 | Decision gate | Before operational logging contract / pilot |
 | Current position | Structured JSON goes to stdout/stderr and journal MESSAGE. JSON severity currently does not imply native journal PRIORITY. SIEM parsing is external. |
 | Options and tradeoffs | Keep JSON-only severity with explicit collector rules; add systemd-recognized priority prefixes; or use native journal submission. Preserve structured payload parsing across the selected approach. |
-| Evidence needed | Test journalctl severity filters, collector JSON parsing, outage/recovery correlation, rate limits/suppression, and journal unavailability. Freeze event fields and priority mapping. |
+| Evidence needed | Test journalctl severity filters, collector JSON parsing, outage/recovery correlation, rate limits/suppression, journal unavailability, and blocked/broken stdout/stderr (logging isolation, architecture §5). Freeze event fields and priority mapping. |
 | Context | Architecture §5; temp.md O8 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -216,7 +216,7 @@ replace the agreed [architecture](architecture.md).
 | Status | Open |
 | Decision gate | Before schema freeze / release benchmark |
 | Current position | Queues have byte/count/age bounds; deadlines/backoff are finite. Example values are not defaults. Performance is a measured envelope, not a universal guarantee. |
-| Options and tradeoffs | Select per-sink bounds, total budget, monotonic age/deadlines, backoff and shutdown durations; choose benchmark duration and numeric local-latency target. |
+| Options and tradeoffs | Select per-sink bounds, total budget, monotonic age/deadlines, backoff and shutdown durations, logging queue size and flush deadline, and management connection/timeout limits; choose benchmark duration and numeric local-latency target. |
 | Evidence needed | Burst and bottleneck tests, idle routes, failures, shutdown, wall-clock changes, identified VM/OS/NIC, generator/receiver loss separation, and realistic fan-out. |
 | Context | Architecture §8; review D8, D10 |
 | Investigation results | Not yet recorded |
@@ -260,7 +260,7 @@ replace the agreed [architecture](architecture.md).
 | Decision gate | Before observability schema freeze |
 | Current position | Counter/reason names illustrative; HTTP listener 127.0.0.1:9310 is the agreed proposed default |
 | Options and tradeoffs | Follow Prometheus naming conventions (mcgw prefix, counter totals, units) and verify port allocation/coexistence before freezing |
-| Evidence needed | Official Prometheus conventions/port registry check; bounded label and reset tests; status/HTTP fixtures |
+| Evidence needed | Official Prometheus conventions/port registry check; bounded label and reset tests; status/HTTP fixtures; stalled-client and concurrent-scrape fault injection during traffic, reload and recovery |
 | Resolution | Pending; no claim of exclusive registered port ownership |
 
 ## Deferred feature design
