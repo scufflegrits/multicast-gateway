@@ -9,7 +9,7 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-FILES = [ROOT / 'README.md', *sorted((ROOT / 'docs').glob('*.md'))]
+FILES = [ROOT / 'README.md', *sorted((ROOT / 'docs').rglob('*.md'))]
 errors = []
 
 def headings(text):
@@ -23,7 +23,7 @@ def headings(text):
             continue
         match = re.match(r'^#{1,6} (.+)$', line)
         if match:
-            slug = re.sub(r'[^\w\- ]', '', match[1].lower()).replace(' ', '-')
+            slug = re.sub(r'[^\w\- ]', '', match[1].replace('`', '').lower()).replace(' ', '-')
             count = counts.get(slug, 0)
             counts[slug] = count + 1
             result.add(slug if not count else f'{slug}-{count}')
@@ -34,8 +34,10 @@ for path in FILES:
     label = path.relative_to(ROOT)
     if sum(line.startswith('```') for line in text.splitlines()) % 2:
         errors.append(f'{label}: unbalanced fenced blocks')
+    # Ignore code examples: PowerShell array/cast syntax can resemble links.
+    prose = re.sub(r"```.*?```", "", text, flags=re.S)
     # Current docs use simple inline local Markdown links, with no title syntax.
-    for target, fragment in re.findall(r'\]\(([^)#]*)(?:#([^)]*))?\)', text):
+    for target, fragment in re.findall(r'\]\(([^)#]*)(?:#([^)]*))?\)', prose):
         if re.match(r'\w+://|mailto:', target):
             continue
         linked = (path.parent / target).resolve() if target else path

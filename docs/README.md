@@ -63,6 +63,7 @@ terms are explained in Concepts and the architecture acronym appendix.
 | [Concepts](mcgw-concepts.md) | Explain the vocabulary, network behavior, and forwarding-confirmation boundary before reading the architecture |
 | [Architecture](architecture.md) | Define scope, behavior, guarantees, design rationale, diagnostic evidence, and open validation choices |
 | [Troubleshooting](mcgw-troubleshooting.md) | Walk operators through symptoms, checks, evidence, and next actions |
+| [Platform references](reference/README.md) | IPv4-only supporting Cisco, Debian/Proxmox, RHEL/VMware and Windows guides; scope, evidence and qualification limits are explicit |
 | [Deployment planning](mcgw-deployment.md) | Host/network prerequisites, lifecycle integration, hardening, logging collection, and site qualification |
 | [Open decisions](mcgw-open-decisions.md) | Track unresolved proposals, current positions, alternatives, evidence needed, decision gates, and resolutions |
 | [Architecture review](architecture-review.md) | Preserve review history, accepted recommendations, justifications, and research sources; architecture.md is authoritative for current decisions |

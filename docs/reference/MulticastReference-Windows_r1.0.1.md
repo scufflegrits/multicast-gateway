@@ -1,18 +1,34 @@
 # Multicast Reference Guide — Windows (Server 2022 / Windows 11)
 
+**Coverage: IPv4 multicast only.** IPv6/MLD configuration and validation are
+outside this guide. mcgw itself retains its separate IPv4/IPv6 design scope.
+
 | Field          | Detail                                  |
 |----------------|-----------------------------------------|
 | Version        | 1.0.1                                   |
-| Last Updated   | 20250519                                |
+| Last Updated   | 20261017                                |
 | Author         | sysadmin                                |
 | Filename       | MulticastReference-Windows_r1.0.1.md    |
 
 ---
 
+## Scope and command use
+
+| Item | Boundary |
+|---|---|
+| Relationship to mcgw | Supporting platform reference; [architecture](../architecture.md) owns mcgw requirements |
+| Lab examples | VLAN 2601, hostnames, interface names and addresses illustrate a topology; substitute verified site values |
+| Evidence | Primary-source review on 2026-10-17; no new device/VM tests executed; exact deployment builds remain unqualified |
+| Inspect | `show`, `Get-*`, `ip ... show`, `cat`, status and bounded captures collect evidence; privileges may still be needed |
+| Change | Configuration stanzas, route/address additions, firewall edits, package installation and service commands change state; select explicitly and retain rollback settings |
+| Active test | Senders/joins create traffic/membership; choose interface, rate, duration and destination deliberately |
+| Capture limit | Capture visibility is not application receipt; check drops and observation point |
+
 ## Revision History
 
 | Version | Date     | Author   | Change Summary                                              |
 |---------|----------|----------|-------------------------------------------------------------|
+| Review | 20261017 | scufflegrits | IPv4-only scope; technical corrections, clickable navigation, acronym and verification-source appendices; filename/version retained |
 | 1.0.1   | 20250519 | sysadmin | Added section 4.4 — multicast interface selection on multi-homed Windows machines |
 | 1.0.0   | 20250517 | sysadmin | Initial release                                             |
 
@@ -36,49 +52,60 @@
 
 ## Table of Contents
 
-1. [Overview](#1-overview)
-2. [Windows Multicast Behavior](#2-windows-multicast-behavior)
-   - 2.1 [How Windows Handles Multicast](#21-how-windows-handles-multicast)
-   - 2.2 [IGMP Version on Windows](#22-igmp-version-on-windows)
-   - 2.3 [Differences Between Server 2022 and Windows 11](#23-differences-between-server-2022-and-windows-11)
-3. [VM NIC Configuration in Proxmox](#3-vm-nic-configuration-in-proxmox)
-   - 3.1 [Proxmox NIC and VLAN Tag](#31-proxmox-nic-and-vlan-tag)
-   - 3.2 [Verification at the Proxmox Host Level](#32-verification-at-the-proxmox-host-level)
-4. [Windows Network Interface Configuration](#4-windows-network-interface-configuration)
-   - 4.1 [Identifying the Correct Interface](#41-identifying-the-correct-interface)
-   - 4.2 [Assigning an IP Address](#42-assigning-an-ip-address)
-   - 4.3 [Verifying Multicast Capability](#43-verifying-multicast-capability)
-   - 4.4 [Multicast Interface Selection on Multi-Homed Machines](#44-multicast-interface-selection-on-multi-homed-machines)
-5. [Windows Firewall — Multicast Rules](#5-windows-firewall--multicast-rules)
-   - 5.1 [Default Firewall Behavior for Multicast](#51-default-firewall-behavior-for-multicast)
-   - 5.2 [Creating Inbound Multicast Rules](#52-creating-inbound-multicast-rules)
-   - 5.3 [Creating Outbound Multicast Rules](#53-creating-outbound-multicast-rules)
-   - 5.4 [Verifying Firewall Rules](#54-verifying-firewall-rules)
-   - 5.5 [Removing Multicast Firewall Rules](#55-removing-multicast-firewall-rules)
-6. [Multicast Receiver Configuration](#6-multicast-receiver-configuration)
-   - 6.1 [Joining a Multicast Group via PowerShell](#61-joining-a-multicast-group-via-powershell)
-   - 6.2 [Using iperf3 for Windows as a Receiver](#62-using-iperf3-for-windows-as-a-receiver)
-   - 6.3 [Using Wireshark as a Passive Receiver](#63-using-wireshark-as-a-passive-receiver)
-7. [Multicast Sender Configuration](#7-multicast-sender-configuration)
-   - 7.1 [Using iperf3 for Windows as a Sender](#71-using-iperf3-for-windows-as-a-sender)
-   - 7.2 [Sending Multicast via PowerShell](#72-sending-multicast-via-powershell)
-8. [Required Tools and Installation](#8-required-tools-and-installation)
-   - 8.1 [iperf3 for Windows](#81-iperf3-for-windows)
-   - 8.2 [Wireshark](#82-wireshark)
-   - 8.3 [tshark](#83-tshark)
-9. [Testing and Verification](#9-testing-and-verification)
-   - 9.1 [Verification Commands — PowerShell](#91-verification-commands--powershell)
-   - 9.2 [Verification Commands — Wireshark and tshark](#92-verification-commands--wireshark-and-tshark)
-   - 9.3 [Worked End-to-End Test Scenario](#93-worked-end-to-end-test-scenario)
-10. [Troubleshooting](#10-troubleshooting)
-    - 10.1 [Multicast Not Leaving the Windows VM](#101-multicast-not-leaving-the-windows-vm)
-    - 10.2 [Multicast Not Arriving at the Windows VM](#102-multicast-not-arriving-at-the-windows-vm)
-    - 10.3 [IGMP Join Not Seen by Switch](#103-igmp-join-not-seen-by-switch)
-    - 10.4 [Multicast Works Briefly Then Stops](#104-multicast-works-briefly-then-stops)
-    - 10.5 [Firewall Blocking Multicast Despite Rules](#105-firewall-blocking-multicast-despite-rules)
-11. [Glossary](#11-glossary)
-
----
+- [Scope and command use](#scope-and-command-use)
+- [Revision History](#revision-history)
+- [1. Overview](#1-overview)
+- [2. Windows Multicast Behavior](#2-windows-multicast-behavior)
+  - [2.1 How Windows Handles Multicast](#21-how-windows-handles-multicast)
+  - [2.2 IGMP Version on Windows](#22-igmp-version-on-windows)
+  - [2.3 Differences Between Server 2022 and Windows 11](#23-differences-between-server-2022-and-windows-11)
+- [3. VM NIC Configuration in Proxmox](#3-vm-nic-configuration-in-proxmox)
+  - [3.1 Proxmox NIC and VLAN Tag](#31-proxmox-nic-and-vlan-tag)
+  - [3.2 Verification at the Proxmox Host Level](#32-verification-at-the-proxmox-host-level)
+- [4. Windows Network Interface Configuration](#4-windows-network-interface-configuration)
+  - [4.1 Identifying the Correct Interface](#41-identifying-the-correct-interface)
+  - [4.2 Assigning an IP Address](#42-assigning-an-ip-address)
+  - [4.3 Verifying Multicast Capability](#43-verifying-multicast-capability)
+  - [4.4 Multicast Interface Selection on Multi-Homed Machines](#44-multicast-interface-selection-on-multi-homed-machines)
+    - [How Windows Selects the Multicast Interface](#how-windows-selects-the-multicast-interface)
+    - [The Problem With Multiple Interfaces](#the-problem-with-multiple-interfaces)
+    - [IGMP Join Interface Selection](#igmp-join-interface-selection)
+    - [Mechanism 1 — Bind the Application to a Specific Interface (Recommended)](#mechanism-1--bind-the-application-to-a-specific-interface-recommended)
+    - [Mechanism 2 — Add a Specific Multicast Route for the Interface](#mechanism-2--add-a-specific-multicast-route-for-the-interface)
+    - [Mechanism 3 — Set a High Metric on Competing Default Routes](#mechanism-3--set-a-high-metric-on-competing-default-routes)
+    - [Verifying Which Interface Multicast Is Using](#verifying-which-interface-multicast-is-using)
+    - [Recommendation for This Environment](#recommendation-for-this-environment)
+- [5. Windows Firewall — Multicast Rules](#5-windows-firewall--multicast-rules)
+  - [5.1 Default Firewall Behavior for Multicast](#51-default-firewall-behavior-for-multicast)
+  - [5.2 Creating Inbound Multicast Rules](#52-creating-inbound-multicast-rules)
+  - [5.3 Creating Outbound Multicast Rules](#53-creating-outbound-multicast-rules)
+  - [5.4 Verifying Firewall Rules](#54-verifying-firewall-rules)
+  - [5.5 Removing Multicast Firewall Rules](#55-removing-multicast-firewall-rules)
+- [6. Multicast Receiver Configuration](#6-multicast-receiver-configuration)
+  - [6.1 Joining a Multicast Group via PowerShell](#61-joining-a-multicast-group-via-powershell)
+  - [6.2 Using iperf2 for Windows as a Receiver](#62-using-iperf2-for-windows-as-a-receiver)
+  - [6.3 Using Wireshark as a Passive Receiver](#63-using-wireshark-as-a-passive-receiver)
+- [7. Multicast Sender Configuration](#7-multicast-sender-configuration)
+  - [7.1 Using iperf2 for Windows as a Sender](#71-using-iperf2-for-windows-as-a-sender)
+  - [7.2 Sending Multicast via PowerShell](#72-sending-multicast-via-powershell)
+- [8. Required Tools and Installation](#8-required-tools-and-installation)
+  - [8.1 iperf2 for Windows](#81-iperf2-for-windows)
+  - [8.2 Wireshark](#82-wireshark)
+  - [8.3 tshark](#83-tshark)
+- [9. Testing and Verification](#9-testing-and-verification)
+  - [9.1 Verification Commands — PowerShell](#91-verification-commands--powershell)
+  - [9.2 Verification Commands — Wireshark and tshark](#92-verification-commands--wireshark-and-tshark)
+  - [9.3 Worked End-to-End Test Scenario](#93-worked-end-to-end-test-scenario)
+- [10. Troubleshooting](#10-troubleshooting)
+  - [10.1 Multicast Not Leaving the Windows VM](#101-multicast-not-leaving-the-windows-vm)
+  - [10.2 Multicast Not Arriving at the Windows VM](#102-multicast-not-arriving-at-the-windows-vm)
+  - [10.3 IGMP Join Not Seen by Switch](#103-igmp-join-not-seen-by-switch)
+  - [10.4 Multicast Works Briefly Then Stops](#104-multicast-works-briefly-then-stops)
+  - [10.5 Firewall Blocking Multicast Despite Rules](#105-firewall-blocking-multicast-despite-rules)
+- [11. Glossary](#11-glossary)
+- [Appendix A — Acronyms and meanings](#appendix-a--acronyms-and-meanings)
+- [Appendix B — Verification sources](#appendix-b--verification-sources)
+  - [Qualification still required](#qualification-still-required)
 
 ## 1. Overview
 
@@ -92,7 +119,7 @@ The architecture is:
 ```
 Windows VM (PVE0x, VLAN 2601)
     ↓ tap interface
-vmbr999 Linux bridge (VLAN-aware, bridge-mcsnooping 0)
+vmbr999 Linux bridge (VLAN-aware, explicit snooping/flooding policy)
     ↓ bond999 (LACP 802.3ad)
 SWITCH01
     ↓ trunk
@@ -105,7 +132,7 @@ Multicast is intra-VLAN only. No inter-VLAN multicast routing is required.
 Multicast group addresses are in the 239.0.0.0/8 administratively scoped range.
 The Cisco switches handle IGMP snooping and querier duties as described in
 MulticastReference-Cisco_r1.0.0.md. The Proxmox bridge is configured to be
-transparent to multicast as described in MulticastReference-Linux_r1.0.0.md.
+configured according to the explicit snooping/flooding policy in [Debian/Proxmox guide](MulticastReference-LinuxDebian_r1.0.3.md).
 
 All commands in this guide are run in an elevated PowerShell session unless
 otherwise noted. To open an elevated PowerShell session:
@@ -126,75 +153,42 @@ Start-Process powershell -Verb RunAs
 
 ### 2.1 How Windows Handles Multicast
 
-Windows implements IGMP at the network stack level via the TCP/IP driver. When
-an application joins a multicast group using the Windows Sockets API
-(`setsockopt` with `IP_ADD_MEMBERSHIP`), the kernel automatically sends an
-IGMP membership report on the bound interface. No separate daemon or service
-is required for basic multicast group membership.
+An application opens a UDP socket and explicitly joins a group on an interface.
+Windows maintains host/interface state for those requests and performs IGMP
+signaling. Closing a socket releases its memberships; another application's
+membership may keep the host interested in the same group.
 
-Key behaviors:
-
-```
-- IGMP joins are sent automatically when an application joins a group
-- IGMP leaves are sent automatically when the application leaves or exits
-- Windows does not act as a multicast router by default
-- Windows does not send IGMP queries — it is always a host, never a querier
-- Multicast group membership is per-socket, not per-interface at the OS level
-- Multiple applications can join the same group independently
-```
-
-This is an important distinction from Linux, where the kernel maintains
-interface-level multicast group membership that persists independently of
-individual applications. On Windows, if the application that joined the group
-exits, the IGMP leave is sent and the group is left. There is no equivalent of
-smcroute for persistent OS-level group membership on Windows without a running
-application.
+The same distinction applies on Linux: ordinary socket joins do not persist
+independently after all owners close them. Administrative `autojoin` or a running
+membership daemon are different mechanisms. A socket bound to a port has not
+necessarily joined a multicast group. See sources W1 and W2.
 
 ### 2.2 IGMP Version on Windows
 
-Windows uses IGMPv3 by default on modern versions. IGMPv3 is backward
-compatible with IGMPv2 queriers. The upstream Cisco switch querier configured
-in this environment uses IGMPv3, which is compatible.
-
-Verify the IGMP version in use:
+Inspect host configuration and actual membership/query packets; do not infer
+active wire behavior solely from the OS name. Compatibility with an older
+querier can affect reporting.
 
 ```powershell
-Get-NetIPv4Protocol | Select -ExpandProperty IGMPVersion
+Get-NetIPv4Protocol | Format-List *
 ```
 
-Expected output on modern Windows:
+Property names/availability depend on the installed networking module. Packet
+capture is the check for the IGMP version actually used.
 
-```
-Version3
-```
-
-IGMPv3 supports source-specific multicast (SSM), allowing a receiver to
-specify both the multicast group and the source IP it wants to receive from.
-For any-source multicast (ASM) with 239.x.x.x groups, IGMPv3 operates in
-exclude mode with an empty exclude list, which is functionally equivalent to
-an IGMPv2 join.
+IGMPv3 supports source lists. A switch that snoops IGMPv3 reports need not have
+an IGMPv3-capable **snooping querier**. Do not assume the illustrated Cisco querier
+uses version 3; verify the selected platform/release and configuration (W3).
 
 ### 2.3 Differences Between Server 2022 and Windows 11
 
-For multicast purposes, Windows Server 2022 and Windows 11 behave identically
-at the network stack level. Both use IGMPv3, both implement the same Windows
-Firewall architecture, and both support the same PowerShell networking
-commandlets.
+Both platforms provide multicast socket APIs and firewall controls. Record the
+OS build, PowerShell/.NET version, adapter driver, effective firewall profiles,
+and policy. Server versus desktop branding does not establish the active profile,
+allowed traffic, or available third-party test binaries.
 
-Differences that may be relevant:
-
-| Area                   | Windows Server 2022                  | Windows 11                          |
-|------------------------|--------------------------------------|-------------------------------------|
-| Firewall default       | Public profile active by default     | Domain/Private profile if joined    |
-| Network discovery      | Disabled by default                  | Enabled on Private networks         |
-| PowerShell version     | 5.1 (7.x installable)                | 5.1 (7.x installable)               |
-| Hyper-V network stack  | Present if Hyper-V role installed    | Present on Pro/Enterprise editions  |
-| iperf3 availability    | Manual install required              | Manual install required             |
-
-For all commands in this guide, behavior is identical between the two platforms
-unless explicitly noted.
-
----
+Use the PowerShell socket tests below as examples to qualify on each build;
+no claim of identical behavior under every policy/update is made.
 
 ## 3. VM NIC Configuration in Proxmox
 
@@ -328,33 +322,22 @@ Verify the IP address is assigned:
 Get-NetIPAddress -InterfaceIndex $ifIndex
 ```
 
-Disable IPv6 on the interface if not needed (reduces noise in packet captures):
-
-```powershell
-Disable-NetAdapterBinding -Name (Get-NetAdapter -InterfaceIndex $ifIndex).Name `
-  -ComponentID ms_tcpip6
-```
+IPv4-only coverage does not require disabling IPv6 on the host.
 
 ### 4.3 Verifying Multicast Capability
 
-Verify the interface supports multicast:
+Inspect the intended NIC and IPv4 addressing, then run the explicit membership
+test in section 6.1. A successful adapter listing or passive capture does not
+prove application membership or delivery.
 
 ```powershell
-Get-NetAdapter -InterfaceIndex $ifIndex | Select Name, PromiscuousMode, MulticastList
+Get-NetAdapter | Where-Object { $_.ifIndex -eq $ifIndex }
+Get-NetIPAddress -InterfaceIndex $ifIndex -AddressFamily IPv4
+netsh interface ipv4 show joins
 ```
 
-Verify the interface is a member of the standard link-local multicast groups
-(these are joined automatically by Windows):
-
-```powershell
-Get-NetIPAddress -InterfaceIndex $ifIndex -AddressFamily IPv4 | Select InterfaceAlias
-netsh interface ip show joins
-```
-
-The output of `netsh interface ip show joins` lists all multicast groups the
-interface has joined. Initially you will see standard Windows groups such as
-224.0.0.1 (all hosts) and 239.255.255.250 (SSDP/UPnP). Application-joined
-groups appear here when the application is running.
+The join listing is host evidence, not proof that a particular application
+socket received the feed. Check actual packets with Wireshark/tshark.
 
 ### 4.4 Multicast Interface Selection on Multi-Homed Machines
 
@@ -366,89 +349,47 @@ explicitly.
 
 #### How Windows Selects the Multicast Interface
 
-Windows does not have a dedicated multicast interface setting. It selects the
-outbound interface for multicast traffic the same way it selects the interface
-for any other IP traffic — by consulting the routing table and picking the
-interface associated with the lowest metric route that covers the destination.
-
-For multicast, the destination is in the 239.0.0.0/8 range. Windows looks for
-a route matching that range:
+When the application does not select an outgoing multicast interface, inspect
+Windows routing/default selection. Routing considers prefix specificity before
+metrics; effective costs include route and interface metrics. A missing
+239/8-specific route does not by itself imply the default route wins: another
+multicast route may match.
 
 ```powershell
-Get-NetRoute -AddressFamily IPv4 | Where-Object {
-    $_.DestinationPrefix -like "224*" -or $_.DestinationPrefix -like "239*"
-}
+Get-NetRoute -AddressFamily IPv4
+Get-NetIPInterface -AddressFamily IPv4
 ```
 
-If no specific multicast route exists, Windows falls back to the default route
-(0.0.0.0/0). Whichever interface owns the lowest-metric default route becomes
-the multicast interface. On a machine with multiple NICs and multiple default
-gateways, this is almost always the wrong interface for intra-VLAN multicast.
+Confirm the actual outgoing interface using capture, rather than infer it from
+default gateways alone.
 
 #### The Problem With Multiple Interfaces
 
-Consider a Windows VM with three NICs:
-
-```
-Ethernet 1 — management,  IP 10.32.200.x,  gateway 10.32.200.254, metric 25
-Ethernet 2 — VLAN 2601,   IP 192.168.1.10, no gateway,            metric 25
-Ethernet 3 — external,    IP 10.0.0.x,     gateway 10.0.0.1,      metric 5
-```
-
-When an application sends multicast to 239.1.1.1 without explicitly binding to
-an interface, Windows picks Ethernet 3 because it has the lowest metric default
-route. The multicast traffic exits the wrong NIC, never reaches VLAN 2601, and
-the physical client on SWITCH02 receives nothing.
+An illustrative VM has management, multicast-data and external NICs. If an
+application leaves interface selection implicit, traffic can use an unintended
+NIC. Inspect matching routes and socket settings; do not assume the NIC with
+the cheapest default gateway necessarily wins.
 
 #### IGMP Join Interface Selection
 
-The same routing table logic applies to IGMP joins. When an application joins
-239.1.1.1, the IGMP membership report is sent out whichever interface the
-routing table selects for that group — not necessarily the interface the
-application intends to receive traffic on:
-
-```
-Application joins 239.1.1.1
-    ↓
-Windows consults routing table for 239.1.1.1
-    ↓
-Lowest metric route wins — may be the wrong interface
-    ↓
-IGMP join exits Ethernet 3 instead of Ethernet 2
-    ↓
-SWITCH01 sees no join on VLAN 2601
-    ↓
-Multicast never delivered to the physical client VLAN
-```
-
-This is why explicitly binding to the correct interface is essential on
-multi-homed Windows machines, not just a best practice.
+Receive membership specifies a group **and an interface**. If the application
+omits the interface, the stack selects a default, which can be unsuitable.
+Use the explicit local-interface overload in section 6.1. Setting an outgoing
+multicast interface does not choose the receiving membership interface (W1).
 
 #### Mechanism 1 — Bind the Application to a Specific Interface (Recommended)
 
-The application specifies the local IP address of the intended interface via
-the `IP_MULTICAST_IF` socket option. This overrides the routing table for that
-socket only and is the correct, portable approach.
+Choose the socket operations separately:
 
-In iperf3, use the `-B` flag:
+| Operation | Purpose |
+|---|---|
+| Bind local endpoint | Select receive port / local source endpoint |
+| `JoinMulticastGroup(group, localAddress)` | Select IPv4 membership interface |
+| `IP_MULTICAST_IF` / `MulticastInterface` | Select outgoing IPv4 multicast interface |
 
-```powershell
-# Sender — bind to the VLAN 2601 interface IP
-iperf3.exe -c 239.1.1.1 -u -B 192.168.1.10 -p 5201
-
-# Receiver — bind to the multicast group but join via the correct interface
-iperf3.exe -s -B 239.1.1.1%192.168.1.10 -p 5201
-```
-
-In the PowerShell UdpClient examples in this guide, bind the socket to the
-local endpoint before sending or joining:
-
-```powershell
-# Bind to the specific interface IP — overrides routing table for this socket
-$localEP = New-Object System.Net.IPEndPoint(
-    [System.Net.IPAddress]::Parse("192.168.1.10"), 0)
-$udpClient = New-Object System.Net.Sockets.UdpClient($localEP)
-```
+A bind alone is not a replacement for either interface-specific operation. Use
+the complete receiver/sender scripts in sections 6.1 and 7.2. They avoid reliance
+on an unverified `%address` suffix or Linux-only device-binding option.
 
 #### Mechanism 2 — Add a Specific Multicast Route for the Interface
 
@@ -469,8 +410,9 @@ New-NetRoute `
   -RouteMetric 1
 ```
 
-Setting `RouteMetric 1` ensures this route wins over the default route for all
-239.x.x.x destinations regardless of interface metric.
+A /8 route is more specific than a default route. Compare equally specific
+routes and effective interface/route costs; a metric value alone is not a
+universal override.
 
 Verify the route is in place:
 
@@ -486,22 +428,10 @@ Remove-NetRoute -DestinationPrefix 239.0.0.0/8 -InterfaceIndex $ifIndex -Confirm
 
 #### Mechanism 3 — Set a High Metric on Competing Default Routes
 
-If non-multicast traffic also needs to exit correctly from each interface,
-adjusting metrics is the cleanest long-term solution. Give the multicast
-interface a lower metric than any other interface with a default gateway:
-
-```powershell
-# Set a high metric on the external interface default route
-Set-NetIPInterface -InterfaceIndex (Get-NetAdapter -Name "Ethernet 3").ifIndex `
-  -InterfaceMetric 100
-
-# Set a low metric on the VLAN 2601 interface
-Set-NetIPInterface -InterfaceIndex (Get-NetAdapter -Name "Ethernet 2").ifIndex `
-  -InterfaceMetric 10
-```
-
-Note: This affects all traffic routing, not just multicast. Use with care on
-machines where specific traffic must exit specific interfaces.
+Changing interface metrics can affect other traffic and only resolves choices
+between otherwise comparable routes. Prefer explicit socket interface selection
+or a deliberately scoped route. Do not change management/default-route costs
+merely because multicast capture is empty.
 
 #### Verifying Which Interface Multicast Is Using
 
@@ -522,46 +452,26 @@ selecting the wrong interface. Apply Mechanism 1 or 2 above to correct it.
 
 #### Recommendation for This Environment
 
-For Windows VMs on Proxmox with multiple NICs where one NIC is the designated
-multicast interface for a specific VLAN:
-
-```
-1. Always use -B <local-ip> in iperf3 to bind to the correct interface.
-   This is the most targeted fix and does not affect other traffic.
-
-2. Add a specific 239.0.0.0/8 route for the multicast interface so the
-   routing table selection is deterministic regardless of application
-   behavior. Use RouteMetric 1 to ensure it wins.
-
-3. Avoid configuring a default gateway on the VLAN data interface
-   (Ethernet 2 in the example above). A NIC with no gateway does not
-   compete in the default route election and will not accidentally win
-   the multicast interface selection through that mechanism.
-
-4. Verify with tshark that IGMP joins are exiting the correct interface
-   before concluding the application configuration is correct.
-```
-
----
+1. Select the receiving membership interface and outgoing multicast interface
+   explicitly in test applications.
+2. Use a scoped multicast route only when required for an application relying
+   on default selection; verify it does not redirect other feeds.
+3. Capture on intended and competing NICs and inspect effective routing.
+4. Do not assume a source bind or low interface metric independently enforces
+   the intended multicast path.
 
 ## 5. Windows Firewall — Multicast Rules
 
 ### 5.1 Default Firewall Behavior for Multicast
 
-Windows Firewall blocks inbound UDP traffic by default unless a rule explicitly
-permits it. Multicast UDP traffic destined for a 239.x.x.x group address is
-subject to the same inbound filtering as unicast UDP. Without an inbound rule,
-the Windows network stack will receive the multicast frame at the adapter level
-but the firewall will silently drop it before the application socket can read it.
+Inspect effective firewall profiles, rules and organizational policy. A local
+multicast join does not grant firewall permission. Permit only the required
+UDP group/port and necessary membership signaling; a broad 239/8 all-port rule
+is a lab alternative, not the preferred production policy.
 
-Outbound multicast traffic is permitted by default in Windows Firewall. However,
-outbound rules should be explicitly configured for clarity and to prevent
-unexpected behavior when the firewall profile changes (e.g. when a machine
-moves between domain, private, and public profiles).
-
-Note: Even with the firewall disabled entirely, applications must still join the
-multicast group via the socket API for traffic to be delivered. The firewall is
-a separate layer from IGMP group membership.
+Outbound permission also depends on policy. Adding allow rules does not defeat
+an explicit block rule. Record current state before changing it and remove only
+the specific test rules you created.
 
 ### 5.2 Creating Inbound Multicast Rules
 
@@ -614,10 +524,8 @@ New-NetFirewallRule `
 Protocol number 2 is IGMP. Windows Firewall does not have a named protocol
 alias for IGMP so the protocol number must be specified directly.
 
-Note: Without the IGMP inbound rule, Windows may still send IGMP joins
-(because IGMP is processed below the firewall layer in the network stack)
-but behavior can vary by Windows version and update level. Explicitly
-permitting IGMP is the safe configuration.
+Inspect capture and effective policy before adding membership rules. Successful
+initial reports do not prove later queries reach the host.
 
 ### 5.3 Creating Outbound Multicast Rules
 
@@ -677,15 +585,8 @@ Verify the effective firewall profile currently active:
 Get-NetFirewallProfile | Select Name, Enabled, DefaultInboundAction, DefaultOutboundAction
 ```
 
-Test whether a specific port is being blocked by simulating a connection
-(useful for unicast verification — multicast requires actual group membership):
-
-```powershell
-Test-NetConnection -ComputerName 239.1.1.1 -Port 5001
-```
-
-Note: `Test-NetConnection` uses TCP and does not test multicast UDP delivery.
-Use iperf3 and Wireshark for actual multicast verification.
+`Test-NetConnection -Port` tests TCP, not multicast UDP; do not use it as
+multicast evidence. Use the UDP scripts and captures below.
 
 ### 5.5 Removing Multicast Firewall Rules
 
@@ -695,12 +596,8 @@ Remove a specific rule by display name:
 Remove-NetFirewallRule -DisplayName "Allow Inbound Multicast UDP 239.x.x.x port 5001"
 ```
 
-Remove all rules with Multicast in the display name:
-
-```powershell
-Get-NetFirewallRule | Where-Object { $_.DisplayName -like "*Multicast*" } |
-  Remove-NetFirewallRule
-```
+Remove only rules created for this test; a wildcard deletion can remove unrelated
+production policy. Record rule names before making changes.
 
 ---
 
@@ -708,101 +605,53 @@ Get-NetFirewallRule | Where-Object { $_.DisplayName -like "*Multicast*" } |
 
 ### 6.1 Joining a Multicast Group via PowerShell
 
-Windows does not have a built-in command-line tool equivalent to mcjoin for
-persistent group membership without a running application. However PowerShell
-can be used to join a group and listen for traffic using the .NET UdpClient
-class. This is useful for testing whether the network delivers multicast before
-deploying the actual application.
-
-Join a multicast group and listen for UDP packets:
+Save as `multicast-receive.ps1`. Select the local IPv4 address actually assigned
+to the intended NIC. This test opens a UDP socket and joins a group; it does not
+change persistent host routes. Stop with Ctrl+C.
 
 ```powershell
-# Set the multicast group and port
 $group = [System.Net.IPAddress]::Parse("239.1.1.1")
-$localEP = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, 5001)
-
-# Create and configure the UDP client
-$udpClient = New-Object System.Net.Sockets.UdpClient
+$localIP = [System.Net.IPAddress]::Parse("192.168.1.20")
+$port = 5001
+$udpClient = [System.Net.Sockets.UdpClient]::new(
+    [System.Net.Sockets.AddressFamily]::InterNetwork)
+$udpClient.Client.ExclusiveAddressUse = $false
 $udpClient.Client.SetSocketOption(
     [System.Net.Sockets.SocketOptionLevel]::Socket,
-    [System.Net.Sockets.SocketOptionName]::ReuseAddress,
-    $true
-)
-$udpClient.Client.Bind($localEP)
-
-# Join the multicast group
-$udpClient.JoinMulticastGroup($group)
-Write-Host "Joined multicast group 239.1.1.1 on port 5001. Waiting for packets..."
-
-# Receive packets in a loop (Ctrl+C to stop)
-$remoteEP = New-Object System.Net.IPEndPoint([System.Net.IPAddress]::Any, 0)
+    [System.Net.Sockets.SocketOptionName]::ReuseAddress, $true)
+$udpClient.Client.Bind([System.Net.IPEndPoint]::new(
+    [System.Net.IPAddress]::Any, $port))
+$udpClient.JoinMulticastGroup($group, $localIP)
+$remoteEP = [System.Net.IPEndPoint]::new([System.Net.IPAddress]::Any, 0)
 try {
     while ($true) {
         $bytes = $udpClient.Receive([ref]$remoteEP)
-        $text = [System.Text.Encoding]::UTF8.GetString($bytes)
-        Write-Host "Received from $($remoteEP.Address):$($remoteEP.Port) — $text"
+        Write-Host "$($remoteEP.Address):$($remoteEP.Port) bytes=$($bytes.Length)"
     }
 } finally {
-    $udpClient.DropMulticastGroup($group)
     $udpClient.Close()
-    Write-Host "Left multicast group."
 }
 ```
 
-Save this as `multicast-receive.ps1` and run with:
+Closing the socket releases its memberships. IGMP leave/report traffic depends
+on protocol version, other memberships and compatibility state; do not demand
+one leave packet per process exit. Packet capture and switch tables provide
+additional evidence, not application payload validation.
+
+### 6.2 Using iperf2 for Windows as a Receiver
+
+**Use iperf2, not iperf3.** iperf3 does not support IP multicast (W4a/W5).
+For deterministic multihomed testing, prefer the explicit PowerShell receiver
+above. An iperf2 example, after qualifying the chosen Windows build:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File multicast-receive.ps1
+iperf.exe -s -u -B 239.1.1.1 -p 5001 -i 1
 ```
 
-When this script runs, Windows sends an IGMP join for 239.1.1.1. The join
-will be visible on the upstream Cisco switch:
-
-```
-SWITCH01# show ip igmp snooping groups vlan 2601
-```
-
-When the script exits (Ctrl+C), Windows sends an IGMP leave.
-
-### 6.2 Using iperf3 for Windows as a Receiver
-
-iperf3 is the primary recommended tool for multicast testing on Windows. It
-handles group joining, IGMP membership, and traffic measurement automatically.
-
-Start iperf3 as a multicast receiver bound to the group address:
-
-```
-iperf3.exe -s -B 239.1.1.1 -p 5201
-```
-
-Parameters:
-
-```
--s            Server mode (receiver)
--B 239.1.1.1  Bind to the multicast group address — triggers IGMP join
--p 5201       UDP port to listen on
-```
-
-iperf3 will join the multicast group automatically when bound to a multicast
-address. The IGMP join will be visible in Wireshark and on the switch snooping
-table.
-
-To specify the local interface explicitly (recommended when the Windows VM has
-multiple NICs):
-
-```
-iperf3.exe -s -B 239.1.1.1 -p 5201 --bind-dev "Ethernet 2"
-```
-
-Note: The `--bind-dev` flag may not be available in all iperf3 Windows builds.
-If unavailable, use `-B <local-ip>` to bind to the specific interface IP:
-
-```
-iperf3.exe -s -B 239.1.1.1%192.168.1.10 -p 5201
-```
-
-The `%192.168.1.10` suffix tells iperf3 to use the interface with that local
-IP address for the multicast join.
+This example does not explicitly select the membership NIC. Check the tool's
+version/help and captures before using it on a multihomed system; do not assume
+Linux `%device` syntax works on Windows. Run a matching iperf2 sender, not a
+PowerShell payload generator, when interpreting iperf2 loss/jitter statistics.
 
 ### 6.3 Using Wireshark as a Passive Receiver
 
@@ -847,54 +696,28 @@ tshark.exe -i "Ethernet 2" -f "host 239.1.1.1" -n
 
 Note: Wireshark and tshark capture at the adapter level, before the Windows
 Firewall. If Wireshark shows multicast arriving but the application does not
-receive it, the firewall is the likely cause. See section 5.
+receive it, the firewall is one possible cause; also inspect socket membership/interface and buffers. See section 5.
 
 ---
 
 ## 7. Multicast Sender Configuration
 
-### 7.1 Using iperf3 for Windows as a Sender
+### 7.1 Using iperf2 for Windows as a Sender
 
-iperf3 in client mode sends multicast UDP traffic to a specified group address.
-A receiver (iperf3 server) must be running and listening on the group and port
-before the sender starts.
+iperf2 supports multicast; iperf3 does not. Example for a qualified iperf2 build:
 
-Send multicast UDP to a group:
-
-```
-iperf3.exe -c 239.1.1.1 -u -b 1M -p 5201 --time 30
+```powershell
+iperf.exe -c 239.1.1.1 -u -b 1M -p 5001 -T 1 -t 30
 ```
 
-Parameters:
-
-```
--c 239.1.1.1   Send to the multicast group address
--u             UDP mode (required for multicast)
--b 1M          Target bandwidth of 1 Mbit/s
--p 5201        Destination port matching the receiver
---time 30      Run for 30 seconds
-```
-
-Specify the source interface by binding to the local IP:
-
-```
-iperf3.exe -c 239.1.1.1 -u -b 1M -p 5201 -B 192.168.1.10 --time 30
-```
-
-Set the multicast TTL (Time To Live). A TTL of 1 limits the traffic to the
-local subnet, which is correct for intra-VLAN multicast:
-
-```
-iperf3.exe -c 239.1.1.1 -u -b 1M -p 5201 --multicast-ttl 1 --time 30
-```
-
-The sender does not join the multicast group. Only receivers send IGMP joins.
-The sender simply transmits UDP packets to the multicast destination address.
+Use a matching iperf2 receiver. The multicast TTL is `-T` in iperf2; do not copy
+iperf3 options into this command. For an explicit NIC/source choice independent
+of tool-specific options, use the PowerShell sender in section 7.2.
 
 ### 7.2 Sending Multicast via PowerShell
 
-A PowerShell script can send multicast UDP packets to a group without requiring
-iperf3. This is useful for testing when iperf3 is not available.
+A PowerShell script can send multicast UDP packets to a group without a third-party traffic generator. Pair it with the PowerShell receiver,
+not an iperf2 statistics parser.
 
 Send multicast UDP packets using .NET UdpClient:
 
@@ -911,6 +734,12 @@ $intervalMs = 1000            # 1 second between packets
 $localEP = New-Object System.Net.IPEndPoint(
     [System.Net.IPAddress]::Parse($sourceIP), 0)
 $udpClient = New-Object System.Net.Sockets.UdpClient($localEP)
+
+# Select the outgoing IPv4 multicast interface independently of the bind
+$udpClient.Client.SetSocketOption(
+    [System.Net.Sockets.SocketOptionLevel]::IP,
+    [System.Net.Sockets.SocketOptionName]::MulticastInterface,
+    [byte[]]([System.Net.IPAddress]::Parse($sourceIP).GetAddressBytes()))
 
 # Set multicast TTL
 $udpClient.Client.SetSocketOption(
@@ -939,54 +768,27 @@ Write-Host "Done."
 Save as `multicast-send.ps1` and run with:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File multicast-send.ps1
+powershell -File multicast-send.ps1
 ```
 
 ---
 
 ## 8. Required Tools and Installation
 
-### 8.1 iperf3 for Windows
+### 8.1 iperf2 for Windows
 
-iperf3 does not have an official Windows installer. Use the builds maintained
-by the iperf3 community or install via winget.
-
-Install via winget (Windows 11 and Server 2022 with winget available):
-
-```powershell
-winget install -e --id iperf3.iperf3
-```
-
-Manual installation if winget is not available:
+Obtain an iperf2 Windows release from the upstream project (W5), verify release
+provenance, and record its version. Do not use an unverified package-manager ID
+or a hard-coded “latest” executable URL as deployment instructions.
 
 ```powershell
-# Download iperf3 for Windows (64-bit)
-$url = "https://github.com/ar51an/iperf3-win-builds/releases/latest/download/iperf3.exe"
-$dest = "C:\Tools\iperf3.exe"
-
-New-Item -ItemType Directory -Force -Path "C:\Tools" | Out-Null
-Invoke-WebRequest -Uri $url -OutFile $dest
-
-# Add to PATH for the current session
-$env:PATH += ";C:\Tools"
-
-# Add to PATH permanently (requires admin)
-[System.Environment]::SetEnvironmentVariable(
-    "PATH",
-    [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";C:\Tools",
-    "Machine"
-)
+iperf.exe --version
+iperf.exe --help
 ```
 
-Verify installation:
-
-```powershell
-iperf3.exe -v
-```
-
-Note: The download URL above references a community build repository. Verify
-the URL is current and the binary is from a trusted source before deploying
-in a production environment.
+The built-in PowerShell/.NET examples are the alternative when iperf2 is absent.
+ESnet does not officially support iperf3 on Windows and recommends iperf2 (W4).
+An installed iperf3 binary is not a multicast test tool.
 
 ### 8.2 Wireshark
 
@@ -1061,7 +863,7 @@ Show all multicast groups currently joined by Windows:
 netsh interface ip show joins
 ```
 
-Show active UDP listeners (verifies iperf3 or application is listening):
+Show bound UDP endpoints (a bind alone does not prove multicast membership):
 
 ```powershell
 Get-NetUDPEndpoint | Where-Object { $_.LocalPort -eq 5201 } |
@@ -1136,154 +938,36 @@ wireshark C:\Captures\multicast.pcap
 
 ### 9.3 Worked End-to-End Test Scenario
 
-This scenario tests multicast delivery from a Windows VM on PVE04 VLAN 2601
-to a physical client connected to SWITCH02 Gi1/0/1, also on VLAN 2601.
+| Role | Example |
+|---|---|
+| Sender | Windows VM, data NIC `192.168.1.10`, VLAN 2601 |
+| Receiver | Windows destination, data NIC `192.168.1.20`, same VLAN |
+| Test feed | Group `239.1.1.1`, UDP port `5001` |
 
-Environment:
+| Step | Action | Evidence |
+|---|---|---|
+| 1 | Verify both data NICs/VLANs and firewall policy | Correct local addresses and permitted UDP/membership traffic |
+| 2 | Inspect bridge snooping/MDB and actual querier | Either deliberately configured flooding mode or healthy snooping; no mandatory bridge-local querier |
+| 3 | Run section 6.1 receiver on destination | Socket joins using destination's data-interface address |
+| 4 | Inspect switch membership and capture IGMP | Receiver membership visible; a short missing report capture is inconclusive |
+| 5 | Run section 7.2 sender on VM | Explicit outgoing multicast interface and source endpoint |
+| 6 | Capture at VM, host uplink and destination | Trace matching UDP payloads and distinguish capture from socket delivery |
+| 7 | Confirm receiver output | Received endpoint and payload length; this is a functional test, not a throughput benchmark |
 
-```
-Sender:   Windows VM on PVE04, VLAN 2601, IP 192.168.1.10, adapter "Ethernet 2"
-Receiver: Physical client on SWITCH02 Gi1/0/1, VLAN 2601, IP 192.168.1.20
-Group:    239.1.1.1, UDP port 5201
-```
+Use iperf2 at **both** ends for rate/loss/jitter benchmarking, after qualifying
+its interface selection. A Linux physical receiver can instead use mcjoin with
+an explicitly selected interface; verify common group/port. Do not mix a raw
+PowerShell sender with iperf2 measurement payloads.
 
-**Step 1 — Verify bridge configuration on PVE04**
-
-On PVE04 (Proxmox host):
-
-```bash
-cat /sys/class/net/vmbr999/bridge/multicast_snooping
-```
-
-Expected: `0`
-
-**Step 2 — Verify IGMP snooping querier on SWITCH01**
-
-On SWITCH01:
-
-```
-show ip igmp snooping querier vlan 2601 detail
-```
-
-Confirm the querier address is `10.32.204.254` and status is active.
-
-**Step 3 — Add Windows Firewall rules on the Windows VM**
-
-On the Windows VM (elevated PowerShell):
-
-```powershell
-New-NetFirewallRule `
-  -DisplayName "Allow Inbound Multicast UDP 239.x.x.x port 5201" `
-  -Direction Inbound -Protocol UDP `
-  -LocalAddress 239.0.0.0/8 -LocalPort 5201 `
-  -Action Allow -Profile Any -Enabled True
-
-New-NetFirewallRule `
-  -DisplayName "Allow Outbound Multicast UDP 239.x.x.x port 5201" `
-  -Direction Outbound -Protocol UDP `
-  -RemoteAddress 239.0.0.0/8 -RemotePort 5201 `
-  -Action Allow -Profile Any -Enabled True
-
-New-NetFirewallRule `
-  -DisplayName "Allow Inbound IGMP" `
-  -Direction Inbound -Protocol 2 `
-  -Action Allow -Profile Any -Enabled True
-
-New-NetFirewallRule `
-  -DisplayName "Allow Outbound IGMP" `
-  -Direction Outbound -Protocol 2 `
-  -Action Allow -Profile Any -Enabled True
-```
-
-**Step 4 — Start the receiver on the physical client**
-
-On the physical client (Linux or Windows with iperf3):
-
-```bash
-# Linux physical client
-iperf3 -s -B 239.1.1.1 -p 5201
-```
-
-Or on a Windows physical client:
-
-```
-iperf3.exe -s -B 239.1.1.1 -p 5201
-```
-
-Leave this running.
-
-**Step 5 — Verify the IGMP join reached SWITCH01 and SWITCH02**
-
-On SWITCH01:
-
-```
-show ip igmp snooping groups vlan 2601
-```
-
-The physical client's port (arriving via SWITCH02 trunk) should appear as a
-member of group 239.1.1.1.
-
-On SWITCH02:
-
-```
-show ip igmp snooping groups vlan 2601
-```
-
-The physical client's port (Gi1/0/1) should appear as a member of 239.1.1.1.
-
-**Step 6 — Start the sender on the Windows VM**
-
-On the Windows VM:
-
-```
-iperf3.exe -c 239.1.1.1 -u -b 1M -p 5201 -B 192.168.1.10 --multicast-ttl 1 --time 30
-```
-
-**Step 7 — Verify traffic is leaving the Windows VM**
-
-In a second PowerShell window on the Windows VM, capture with tshark:
-
-```powershell
-tshark -i "Ethernet 2" -f "host 239.1.1.1" -n
-```
-
-You should see outbound UDP packets destined for 239.1.1.1.
-
-**Step 8 — Verify traffic is crossing the bond on PVE04**
-
-On PVE04:
-
-```bash
-sudo tcpdump -i bond999 -nn 'vlan 2601 and host 239.1.1.1'
-```
-
-You should see multicast frames tagged with VLAN 2601 traversing the bond.
-
-**Step 9 — Verify receipt at the physical client**
-
-The iperf3 server on the physical client should report received traffic in
-its output, showing bitrate, packet loss, and jitter.
-
-**Expected successful flow:**
-
-```
-Windows VM sends UDP to 239.1.1.1
-    ↓ tap interface (multicast frame exits VM via Proxmox bridge)
-    ↓ vmbr999 (bridge-mcsnooping 0, transparent forwarding)
-    ↓ bond999 (LACP bond delivers to SWITCH01 Po4)
-    ↓ SWITCH01 (IGMP snooping forwards to SWITCH02 trunk)
-    ↓ SWITCH02 (IGMP snooping forwards to Gi1/0/1)
-    ↓ Physical client receives multicast packet
-```
-
----
+The Proxmox bridge may keep snooping enabled when queries/MDB are healthy.
+Disabling it is an optional flooding tradeoff, not a prerequisite for the test.
 
 ## 10. Troubleshooting
 
 ### 10.1 Multicast Not Leaving the Windows VM
 
 Symptom: tshark on the Windows VM shows no outbound multicast traffic when
-iperf3 or the PowerShell sender is running.
+iperf2 or the PowerShell sender is running.
 
 Step 1 — Verify the interface has an IP address:
 
@@ -1307,7 +991,7 @@ New-NetRoute -DestinationPrefix 239.0.0.0/8 -InterfaceIndex $ifIndex -NextHop 0.
 
 Step 3 — Verify the application is binding to the correct interface. If the
 Windows VM has multiple NICs, the application may be sending via the wrong one.
-Use the `-B <local-ip>` flag in iperf3 to bind to the specific interface IP.
+Use the explicit multicast-interface socket setting in section 7.2; a source bind alone is not interface enforcement.
 
 Step 4 — Verify outbound firewall rules are not blocking multicast UDP:
 
@@ -1320,7 +1004,7 @@ Get-NetFirewallRule | Where-Object {
 ### 10.2 Multicast Not Arriving at the Windows VM
 
 Symptom: tshark on the Windows VM shows multicast frames arriving (visible in
-the raw capture) but the iperf3 server or PowerShell receiver reports nothing.
+the raw capture) but the iperf2 server or PowerShell receiver reports nothing.
 
 Step 1 — Verify the inbound firewall rule is present and enabled:
 
@@ -1385,7 +1069,7 @@ tshark -i "Ethernet 2" -f "igmp" -n
 
 You should see an IGMP membership report for 239.1.1.1. If no IGMP traffic
 appears, the Windows stack is not sending the join. Verify the application
-has successfully called the socket join API (no error from iperf3 or the
+has successfully called the socket join API (no error from iperf2 or the
 PowerShell script).
 
 Step 2 — Verify the IGMP outbound firewall rule is present:
@@ -1436,7 +1120,7 @@ application-driven. If the application exits or crashes, the group is left
 immediately and the switch removes the membership entry.
 
 ```powershell
-Get-Process -Name iperf3 -ErrorAction SilentlyContinue
+Get-Process -Name iperf -ErrorAction SilentlyContinue
 ```
 
 Step 4 — If using the PowerShell receiver script, verify it is still executing
@@ -1505,8 +1189,9 @@ Get-Content "C:\Windows\System32\LogFiles\Firewall\pfirewall.log" |
 |-----------------------|---------------------------------------------------------------------------------|
 | GPO                   | Group Policy Object. Active Directory policy applied to computers or users.     |
 | IGMP                  | Internet Group Management Protocol. Used by hosts to join multicast groups.     |
-| IGMPv3                | IGMP version 3. Default on modern Windows. Supports source-specific multicast.  |
-| iperf3                | Network performance testing tool with multicast UDP support.                    |
+| IGMPv3 | IGMP version supporting source lists; verify effective wire version. |
+| iperf2 | Traffic generator with multicast support; use matching endpoints. |
+| iperf3 | Separate tool without IP multicast support; not used for these tests. |
 | Multicast Group       | An IP address in the 224.0.0.0/4 range representing a set of receivers.         |
 | netsh                 | Windows network configuration command-line tool.                                |
 | Npcap                 | Windows packet capture driver required by Wireshark and tshark.                 |
@@ -1517,8 +1202,72 @@ Get-Content "C:\Windows\System32\LogFiles\Firewall\pfirewall.log" |
 | TTL                   | Time To Live. Multicast TTL of 1 limits traffic to the local subnet.            |
 | UdpClient             | .NET class for sending and receiving UDP datagrams including multicast.          |
 | VirtIO                | Paravirtualized device driver framework. Recommended NIC type for Proxmox VMs.  |
-| vmbr999               | VLAN-aware Linux bridge on PVE hosts. bridge-mcsnooping 0 for transparency.     |
+| vmbr999               | VLAN-aware Linux bridge on PVE hosts. snooping/flooding policy selected explicitly.     |
 | Wireshark             | GUI packet capture and analysis tool.                                           |
 | Windows Firewall      | Built-in stateful firewall in Windows. Filters inbound and outbound traffic.    |
-| winget                | Windows Package Manager. Used to install iperf3 and Wireshark.                  |
-| 239.0.0.0/8           | Administratively scoped multicast range. Private use, not internet-routable.    |
+| winget                | Windows Package Manager. Package-manager tooling; verify package IDs/provenance before use.                  |
+| 239.0.0.0/8           | Administratively scoped multicast range. Administratively scoped; configured boundaries enforce scope.    |
+
+## Appendix A — Acronyms and meanings
+
+Literal command/API identifiers, interface names and lab device names are not
+acronyms. Product names (such as IOS XE, ESXi and VirtIO) identify platforms;
+use the vendor documentation for their release-specific behavior.
+
+| Term | Meaning |
+|---|---|
+| API | Application Programming Interface |
+| GUI | Graphical User Interface |
+| ID | Identifier |
+| IGMP | Internet Group Management Protocol |
+| IP | Internet Protocol |
+| IPv4 | Internet Protocol version 4 |
+| IPv6 | Internet Protocol version 6 (outside this guide's configuration coverage) |
+| ISO | ISO disk-image format (optical-media image) |
+| LACP | Link Aggregation Control Protocol |
+| MAC | Media Access Control |
+| MDB | Multicast Database |
+| MLD | Multicast Listener Discovery (outside this guide's configuration coverage) |
+| NIC | Network Interface Card |
+| OS | Operating System |
+| PVE | Proxmox Virtual Environment |
+| TCP | Transmission Control Protocol |
+| TTL | Time to Live |
+| UDP | User Datagram Protocol |
+| URL | Uniform Resource Locator |
+| UTF8 | Unicode Transformation Format — 8-bit |
+| VE | Virtual Environment |
+| VLAN | Virtual Local Area Network |
+| VM | Virtual Machine |
+| GPO | Group Policy Object |
+| GUID | Globally Unique Identifier |
+
+## Appendix B — Verification sources
+
+Accessed/reviewed 2026-10-17. These primary sources support the corrected
+mechanisms, not a claim that every command or platform was tested. Configuration
+choices and example topology are project guidance. No hardware/VM lab validation
+was performed during this revision. Pin tool versions and verify installed help,
+service units, policy and vendor release notes before deployment.
+
+| ID | Primary source | Verification scope |
+|---|---|---|
+| W1 | [Microsoft IPv4 socket options](https://learn.microsoft.com/en-us/windows/win32/winsock/ipproto-ip-socket-options) | Separate outgoing interface, membership interface, and socket options |
+| W2 | [Microsoft UdpClient.JoinMulticastGroup](https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.udpclient.joinmulticastgroup?view=net-9.0) | Explicit IPv4 local-address membership overload; scripts require platform qualification |
+| W3 | [Catalyst 9300 IOS XE 17.15.x multicast guide](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/17-15/configuration_guide/ip_mcast_rtng/b_1715_ip_mcast_rtng_9300_cg.pdf) | Do not equate IGMPv3 snooping with snooping-querier version |
+| W4 | [ESnet iperf3 FAQ](https://software.es.net/iperf/faq.html) | Windows support position and recommendation of iperf2 |
+| W4a | [ESnet maintainer response on multicast](https://github.com/esnet/iperf/issues/617) | iperf3 lacks IP multicast support |
+| W5 | [Upstream iperf2 manual](https://iperf2.sourceforge.io/iperf-manpage.html) | Multicast tool/mode/options; qualify chosen Windows build |
+| W6 | [Wireshark tshark manual](https://www.wireshark.org/docs/man-pages/tshark.html) | Capture selection, filters and bounds |
+| W7 | [Linux bridge documentation](https://www.kernel.org/doc/html/latest/networking/bridge.html) | Underlying Proxmox bridge membership/snooping concepts |
+| W8 | [Linux IPv4 socket manual](https://man7.org/linux/man-pages/man7/ip.7.html) | Linux comparison: socket joins versus administrative/daemon-held membership |
+| G1 | [RFC 2365 — Administratively Scoped IP Multicast](https://www.rfc-editor.org/rfc/rfc2365.html) | 239/8 scope requires configured administrative boundaries; it is not inherent authentication or isolation |
+
+### Qualification still required
+
+| Evidence | Status |
+|---|---|
+| Exact OS/device/software versions and effective policy | Record and test at the site |
+| Commands/scripts and complete data path | Not executed during this review |
+| Throughput, loss, failover and recovery | Not measured; examples are not guarantees |
+| IPv6/MLD | Explicitly outside this guide |

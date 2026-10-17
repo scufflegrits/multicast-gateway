@@ -1,18 +1,34 @@
 # Multicast Reference Guide — Proxmox / Linux (Debian 13)
 
+**Coverage: IPv4 multicast only.** IPv6/MLD configuration and validation are
+outside this guide. mcgw itself retains its separate IPv4/IPv6 design scope.
+
 | Field          | Detail                               |
 |----------------|--------------------------------------|
 | Version        | 1.0.3                                |
-| Last Updated   | 20261016                             |
+| Last Updated   | 20261017                             |
 | Author         | sysadmin                             |
 | Filename       | MulticastReference-LinuxDebian_r1.0.3.md |
 
 ---
 
+## Scope and command use
+
+| Item | Boundary |
+|---|---|
+| Relationship to mcgw | Supporting platform reference; [architecture](../architecture.md) owns mcgw requirements |
+| Lab examples | VLAN 2601, hostnames, interface names and addresses illustrate a topology; substitute verified site values |
+| Evidence | Primary-source review on 2026-10-17; no new device/VM tests executed; exact deployment builds remain unqualified |
+| Inspect | `show`, `Get-*`, `ip ... show`, `cat`, status and bounded captures collect evidence; privileges may still be needed |
+| Change | Configuration stanzas, route/address additions, firewall edits, package installation and service commands change state; select explicitly and retain rollback settings |
+| Active test | Senders/joins create traffic/membership; choose interface, rate, duration and destination deliberately |
+| Capture limit | Capture visibility is not application receipt; check drops and observation point |
+
 ## Revision History
 
 | Version | Date     | Author   | Change Summary                                                                          |
 |---------|----------|----------|-----------------------------------------------------------------------------------------|
+| Review | 20261017 | scufflegrits | IPv4-only scope; technical corrections, clickable navigation, acronym and verification-source appendices; filename/version retained |
 | 1.0.3   | 20261016 | sysadmin | Section 11 deep dive fully written (11.1–11.7) and extended with 11.8 socket-level controls and 11.9 deep dive troubleshooting; added 3.4 firewalls (guest nftables/ufw, Proxmox VM firewall); added troubleshooting 10.6 and 10.7; glossary additions |
 | 1.0.2   | 20261016 | sysadmin | Technical corrections: iperf3 replaced (sections 5.3 and 6.2 retitled) with iperf (iperf2) for multicast; mcjoin flags corrected (-v, -l, -r); pimd dense-mode claims removed; smcroute SSM and same-interface forwarding corrected; /proc/net/igmp conversion example fixed; IGMP timeout arithmetic fixed; rp_filter/iptables scope on the Proxmox bridge clarified; 11.4 limit description corrected; platform note updated; filename field and section 11 TOC link fixed |
 | 1.0.1   | 20250519 | sysadmin | Added section 4.3 multi-interface selection; section 11 deep dive headers; glossary updates |
@@ -33,64 +49,79 @@
 
 ## Table of Contents
 
-1. [Overview](#1-overview)
-2. [Proxmox Host Bridge Configuration](#2-proxmox-host-bridge-configuration)
-   - 2.1 [Linux Bridge and Multicast](#21-linux-bridge-and-multicast)
-   - 2.2 [bridge-mcsnooping Behavior](#22-bridge-mcsnooping-behavior)
-   - 2.3 [Recommended Bridge Configuration](#23-recommended-bridge-configuration)
-   - 2.4 [VLAN-Aware Bridge and Multicast](#24-vlan-aware-bridge-and-multicast)
-   - 2.5 [Bond Interface and Multicast](#25-bond-interface-and-multicast)
-   - 2.6 [Applying and Verifying Bridge Changes](#26-applying-and-verifying-bridge-changes)
-3. [VM NIC Configuration for Multicast VLANs](#3-vm-nic-configuration-for-multicast-vlans)
-   - 3.1 [Proxmox VM NIC and VLAN Tag](#31-proxmox-vm-nic-and-vlan-tag)
-   - 3.2 [Verification at the Host Level](#32-verification-at-the-host-level)
-   - 3.3 [Multicast Interface Selection on Multi-Homed Machines](#33-multicast-interface-selection-on-multi-homed-machines)
-   - 3.4 [Firewalls and Multicast](#34-firewalls-and-multicast)
-4. [Debian 13 Guest — Required Packages](#4-debian-13-guest--required-packages)
-   - 4.1 [Package Overview](#41-package-overview)
-   - 4.2 [Installation](#42-installation)
-5. [Debian 13 Guest — Multicast Receiver Configuration](#5-debian-13-guest--multicast-receiver-configuration)
-   - 5.1 [Joining a Multicast Group Manually](#51-joining-a-multicast-group-manually)
-   - 5.2 [Using mcjoin as a Receiver](#52-using-mcjoin-as-a-receiver)
-   - 5.3 [Using iperf (iperf2) as a Receiver](#53-using-iperf-iperf2-as-a-receiver)
-   - 5.4 [Using smcroute as a Static Receiver](#54-using-smcroute-as-a-static-receiver)
-   - 5.5 [Using pimd as a Dynamic Receiver](#55-using-pimd-as-a-dynamic-receiver)
-6. [Debian 13 Guest — Multicast Sender Configuration](#6-debian-13-guest--multicast-sender-configuration)
-   - 6.1 [Using mcjoin as a Sender](#61-using-mcjoin-as-a-sender)
-   - 6.2 [Using iperf (iperf2) as a Sender](#62-using-iperf-iperf2-as-a-sender)
-   - 6.3 [Using smcroute for Static Sending](#63-using-smcroute-for-static-sending)
-7. [smcroute vs pimd — Which to Use](#7-smcroute-vs-pimd--which-to-use)
-   - 7.1 [smcroute Overview](#71-smcroute-overview)
-   - 7.2 [pimd Overview](#72-pimd-overview)
-   - 7.3 [Recommendation for This Environment](#73-recommendation-for-this-environment)
-8. [systemd Service Configuration](#8-systemd-service-configuration)
-   - 8.1 [smcroute as a systemd Service](#81-smcroute-as-a-systemd-service)
-   - 8.2 [pimd as a systemd Service](#82-pimd-as-a-systemd-service)
-9. [Testing and Verification](#9-testing-and-verification)
-   - 9.1 [Verification Commands — Proxmox Host](#91-verification-commands--proxmox-host)
-   - 9.2 [Verification Commands — Debian Guest](#92-verification-commands--debian-guest)
-   - 9.3 [Worked End-to-End Test Scenario](#93-worked-end-to-end-test-scenario)
-10. [Troubleshooting](#10-troubleshooting)
-    - 10.1 [Multicast Not Leaving the VM](#101-multicast-not-leaving-the-vm)
-    - 10.2 [Multicast Not Arriving at the VM](#102-multicast-not-arriving-at-the-vm)
-    - 10.3 [IGMP Join Not Seen by Switch](#103-igmp-join-not-seen-by-switch)
-    - 10.4 [Multicast Works Briefly Then Stops](#104-multicast-works-briefly-then-stops)
-    - 10.5 [Bridge Delivering Multicast to Wrong VMs](#105-bridge-delivering-multicast-to-wrong-vms)
-    - 10.6 [Multicast Reaches the VM but Not the Application](#106-multicast-reaches-the-vm-but-not-the-application)
-    - 10.7 [Multicast Interrupted After Live Migration](#107-multicast-interrupted-after-live-migration)
-11. [Deep Dive — Advanced Multicast Interface Control](#11-deep-dive--advanced-multicast-interface-control-debian-guest-vms)
-    - 11.1 [Policy Routing with ip rule](#111-policy-routing-with-ip-rule)
-    - 11.2 [Multicast Routing Tables](#112-multicast-routing-tables)
-    - 11.3 [rp_filter — Reverse Path Filtering](#113-rp_filter--reverse-path-filtering)
-    - 11.4 [igmp_max_memberships — Host and Guest Limits](#114-igmp_max_memberships--host-and-guest-limits)
-    - 11.5 [VRFs — Virtual Routing and Forwarding](#115-vrfs--virtual-routing-and-forwarding)
-    - 11.6 [smcroute Interface Binding in Multi-Interface Environments](#116-smcroute-interface-binding-in-multi-interface-environments)
-    - 11.7 [pimd Interface Binding in Multi-Interface Environments](#117-pimd-interface-binding-in-multi-interface-environments)
-    - 11.8 [Socket-Level Controls — IP_MULTICAST_ALL and Receive Buffers](#118-socket-level-controls--ip_multicast_all-and-receive-buffers)
-    - 11.9 [Deep Dive Troubleshooting](#119-deep-dive-troubleshooting)
-12. [Glossary](#12-glossary)
-
----
+- [Scope and command use](#scope-and-command-use)
+- [Revision History](#revision-history)
+- [1. Overview](#1-overview)
+- [2. Proxmox Host Bridge Configuration](#2-proxmox-host-bridge-configuration)
+  - [2.1 Linux Bridge and Multicast](#21-linux-bridge-and-multicast)
+  - [2.2 bridge-mcsnooping Behavior](#22-bridge-mcsnooping-behavior)
+  - [2.3 Recommended Bridge Configuration](#23-recommended-bridge-configuration)
+  - [2.4 VLAN-Aware Bridge and Multicast](#24-vlan-aware-bridge-and-multicast)
+  - [2.5 Bond Interface and Multicast](#25-bond-interface-and-multicast)
+  - [2.6 Applying and Verifying Bridge Changes](#26-applying-and-verifying-bridge-changes)
+- [3. VM NIC Configuration for Multicast VLANs](#3-vm-nic-configuration-for-multicast-vlans)
+  - [3.1 Proxmox VM NIC and VLAN Tag](#31-proxmox-vm-nic-and-vlan-tag)
+  - [3.2 Verification at the Host Level](#32-verification-at-the-host-level)
+  - [3.3 Multicast Interface Selection on Multi-Homed Machines](#33-multicast-interface-selection-on-multi-homed-machines)
+    - [How Linux Selects the Multicast Interface](#how-linux-selects-the-multicast-interface)
+    - [The Problem With Multiple Interfaces](#the-problem-with-multiple-interfaces)
+    - [IGMP Join Interface Selection](#igmp-join-interface-selection)
+    - [Mechanism 1 — Add a Specific Multicast Route (Recommended)](#mechanism-1--add-a-specific-multicast-route-recommended)
+    - [Mechanism 2 — Bind the Application to a Specific Interface](#mechanism-2--bind-the-application-to-a-specific-interface)
+    - [Mechanism 3 — Set Interface Route Metric](#mechanism-3--set-interface-route-metric)
+    - [Proxmox Host — Verifying bond999 and vmbr999 Are Not Blocking Multicast](#proxmox-host--verifying-bond999-and-vmbr999-are-not-blocking-multicast)
+    - [Verifying Which Interface Multicast Is Using](#verifying-which-interface-multicast-is-using)
+    - [Recommendation for This Environment](#recommendation-for-this-environment)
+  - [3.4 Firewalls and Multicast](#34-firewalls-and-multicast)
+    - [Guest Firewall — nftables](#guest-firewall--nftables)
+    - [Guest Firewall — ufw](#guest-firewall--ufw)
+    - [Proxmox Firewall for the VM](#proxmox-firewall-for-the-vm)
+- [4. Debian 13 Guest — Required Packages](#4-debian-13-guest--required-packages)
+  - [4.1 Package Overview](#41-package-overview)
+  - [4.2 Installation](#42-installation)
+- [5. Debian 13 Guest — Multicast Receiver Configuration](#5-debian-13-guest--multicast-receiver-configuration)
+  - [5.1 Joining a Multicast Group Manually](#51-joining-a-multicast-group-manually)
+  - [5.2 Using mcjoin as a Receiver](#52-using-mcjoin-as-a-receiver)
+  - [5.3 Using iperf (iperf2) as a Receiver](#53-using-iperf-iperf2-as-a-receiver)
+  - [5.4 Using smcroute as a Static Receiver](#54-using-smcroute-as-a-static-receiver)
+  - [5.5 Using pimd as a Dynamic Receiver](#55-using-pimd-as-a-dynamic-receiver)
+- [6. Debian 13 Guest — Multicast Sender Configuration](#6-debian-13-guest--multicast-sender-configuration)
+  - [6.1 Using mcjoin as a Sender](#61-using-mcjoin-as-a-sender)
+  - [6.2 Using iperf (iperf2) as a Sender](#62-using-iperf-iperf2-as-a-sender)
+  - [6.3 Using smcroute for Static Sending](#63-using-smcroute-for-static-sending)
+- [7. smcroute vs pimd — Which to Use](#7-smcroute-vs-pimd--which-to-use)
+  - [7.1 smcroute Overview](#71-smcroute-overview)
+  - [7.2 pimd Overview](#72-pimd-overview)
+  - [7.3 Recommendation for This Environment](#73-recommendation-for-this-environment)
+- [8. systemd Service Configuration](#8-systemd-service-configuration)
+  - [8.1 smcroute as a systemd Service](#81-smcroute-as-a-systemd-service)
+  - [8.2 pimd as a systemd Service](#82-pimd-as-a-systemd-service)
+- [9. Testing and Verification](#9-testing-and-verification)
+  - [9.1 Verification Commands — Proxmox Host](#91-verification-commands--proxmox-host)
+  - [9.2 Verification Commands — Debian Guest](#92-verification-commands--debian-guest)
+  - [9.3 Worked End-to-End Test Scenario](#93-worked-end-to-end-test-scenario)
+- [10. Troubleshooting](#10-troubleshooting)
+  - [10.1 Multicast Not Leaving the VM](#101-multicast-not-leaving-the-vm)
+  - [10.2 Multicast Not Arriving at the VM](#102-multicast-not-arriving-at-the-vm)
+  - [10.3 IGMP Join Not Seen by Switch](#103-igmp-join-not-seen-by-switch)
+  - [10.4 Multicast Works Briefly Then Stops](#104-multicast-works-briefly-then-stops)
+  - [10.5 Bridge Delivering Multicast to Wrong VMs](#105-bridge-delivering-multicast-to-wrong-vms)
+  - [10.6 Multicast Reaches the VM but Not the Application](#106-multicast-reaches-the-vm-but-not-the-application)
+  - [10.7 Multicast Interrupted After Live Migration](#107-multicast-interrupted-after-live-migration)
+- [11. Deep Dive — Advanced Multicast Interface Control (Debian Guest VMs)](#11-deep-dive--advanced-multicast-interface-control-debian-guest-vms)
+  - [11.1 Policy Routing with ip rule](#111-policy-routing-with-ip-rule)
+  - [11.2 Multicast Routing Tables](#112-multicast-routing-tables)
+  - [11.3 rp_filter — Reverse Path Filtering](#113-rp_filter--reverse-path-filtering)
+  - [11.4 igmp_max_memberships — Host and Guest Limits](#114-igmp_max_memberships--host-and-guest-limits)
+  - [11.5 VRFs — Virtual Routing and Forwarding](#115-vrfs--virtual-routing-and-forwarding)
+  - [11.6 smcroute Interface Binding in Multi-Interface Environments](#116-smcroute-interface-binding-in-multi-interface-environments)
+  - [11.7 pimd Interface Binding in Multi-Interface Environments](#117-pimd-interface-binding-in-multi-interface-environments)
+  - [11.8 Socket-Level Controls — IP_MULTICAST_ALL and Receive Buffers](#118-socket-level-controls--ip_multicast_all-and-receive-buffers)
+  - [11.9 Deep Dive Troubleshooting](#119-deep-dive-troubleshooting)
+- [12. Glossary](#12-glossary)
+- [Appendix A — Acronyms and meanings](#appendix-a--acronyms-and-meanings)
+- [Appendix B — Verification sources](#appendix-b--verification-sources)
+  - [Qualification still required](#qualification-still-required)
 
 ## 1. Overview
 
@@ -104,7 +135,7 @@ The architecture is:
 ```
 Debian VM (PVE0x, VLAN 2601)
     ↓ tap interface
-vmbr999 Linux bridge (VLAN-aware, bridge-mcsnooping off)
+vmbr999 Linux bridge (VLAN-aware, selected snooping/flooding policy)
     ↓ bond999 (LACP 802.3ad)
 SWITCH01
     ↓ trunk
@@ -117,8 +148,8 @@ Multicast is intra-VLAN only. No inter-VLAN multicast routing is required.
 Multicast group addresses are in the 239.0.0.0/8 administratively scoped range.
 The Cisco switches handle IGMP snooping and querier duties as described in
 MulticastReference-Cisco_r1.0.0.md. The Proxmox bridge is configured to be
-transparent to multicast, deferring all membership tracking to the upstream
-switches.
+according to the lab's deliberate flooding policy. A working snooping
+configuration is also valid; guest socket membership remains separate.
 
 ---
 
@@ -135,29 +166,24 @@ By default, Linux bridge IGMP snooping is enabled. This creates a two-layer
 snooping situation:
 
 ```
-Physical client sends IGMP join
-    ↓
-SWITCH02 snoops join (Cisco IGMP snooping)
-    ↓
-SWITCH01 snoops join (Cisco IGMP snooping + querier)
-    ↓
-bond999 delivers frame to vmbr999
-    ↓
-vmbr999 Linux bridge snoops join (Linux bridge IGMP snooping)
-    ↓
-VM tap interface
+VM receiver joins on its guest interface
+    ↓ report traverses tap and vmbr999 toward physical querier
+    ↓ bridge learns VM port membership when snooping is enabled
+    ↓ physical switch learns membership on the host-facing uplink
+Queries travel from the physical querier toward the VM.
 ```
 
-The Linux bridge snooping layer introduces a problem: it has no querier of its
-own in this design. Without queries arriving on the bridge itself, the Linux
-bridge cannot maintain its membership state correctly. Over time memberships
-time out and the bridge stops delivering multicast to the correct VM tap
-interfaces, even though the upstream Cisco switches are handling membership
-correctly.
+A bridge need not run its own querier when it receives usable queries from the
+physical network. Inspect per-VLAN query propagation, bridge multicast database
+(MDB), router-port learning and VM reports before changing snooping.
 
-The correct resolution is to disable Linux bridge IGMP snooping and let the
-bridge act as a transparent forwarder, delegating all snooping decisions to
-the upstream Cisco switches.
+| Policy | Tradeoff |
+|---|---|
+| Snooping enabled | Limit delivery to interested ports; requires healthy membership/query state |
+| Snooping disabled | Deliberate multicast flooding within VLAN forwarding constraints; more guest bandwidth/CPU |
+
+The illustrated lab may choose flooding. It is not a universal fix or a mcgw
+requirement; increasing multicast load is not necessarily “slight.” See L1.
 
 ### 2.2 bridge-mcsnooping Behavior
 
@@ -173,18 +199,20 @@ With `bridge-mcsnooping 0`:
 - The bridge does not intercept or act on IGMP traffic
 - All multicast frames are forwarded to all tap interfaces in the VLAN
 - IGMP joins and reports pass through the bridge unmodified to the switch
-- The upstream Cisco switch remains the sole authority for multicast membership
-- VMs receive all multicast addressed to their VLAN, filtered only by what the
-  upstream switch delivers to the bond port
+- Upstream switches still maintain their own snooping state; guest socket
+  membership remains necessary
+- VM-facing ports may receive additional multicast in their VLAN; guest
+  NIC/socket filtering remains separate from bridge forwarding
 
-This increases the per-VM multicast load slightly since VMs receive all
+This increases the per-VM multicast load slightly since VMs may receive additional
 multicast in the VLAN rather than only subscribed groups. For a controlled
 environment using 239.x.x.x private range groups with a limited number of VMs
-per VLAN, this is acceptable and is the correct design choice.
+per VLAN, measure whether the flooding load is acceptable; do not assume it is.
 
 ### 2.3 Recommended Bridge Configuration
 
-The recommended `/etc/network/interfaces` configuration for all PVE hosts:
+Example flooding-mode `/etc/network/interfaces` stanza for the illustrated lab;
+verify existing VLAN/bond/loop policy before applying, rather than copying it to all hosts:
 
 ```
 auto vmbr999
@@ -204,10 +232,9 @@ other parameters remain unchanged.
 Rationale for each parameter in the context of multicast:
 
 ```
-bridge-stp off       STP is disabled on the host bridge since spanning tree
-                     is handled by the upstream Cisco switches. Leaving STP
-                     enabled on the bridge could generate BPDUs that trigger
-                     BPDU Guard on the switch port.
+bridge-stp off       STP disabled is a lab topology choice, not a multicast
+                     prerequisite. Validate loop prevention and switch edge/BPDU
+                     policy for the host bridge before selecting this value.
 
 bridge-fd 0          Forward delay of 0 seconds. Ensures the bridge does not
                      delay multicast forwarding when a tap interface comes up.
@@ -220,9 +247,8 @@ bridge-mcsnooping 0  Disables Linux bridge IGMP snooping. Makes the bridge
                      decisions to the upstream Cisco switches.
 ```
 
-Apply this configuration to all PVE hosts (PVE01 through PVE04). The
-configuration is identical across hosts; only the IP addresses on management
-interfaces differ.
+Apply only to hosts for which this policy was selected. Existing host addressing,
+VLAN exclusions, loop protection and management paths must be preserved.
 
 ### 2.4 VLAN-Aware Bridge and Multicast
 
@@ -479,9 +505,9 @@ sudo ip route del 239.0.0.0/8 dev eth1
 
 #### Mechanism 2 — Bind the Application to a Specific Interface
 
-Applications that support interface binding can override the routing table for
-that socket only. This is the most targeted fix and does not affect other
-traffic or other applications.
+Explicit membership-interface selection controls where the socket joins; an
+outgoing multicast-interface setting constrains sends. Source binding is a
+separate operation and must not be mistaken for full egress enforcement.
 
 In mcjoin, use the `-i` flag:
 
@@ -551,7 +577,7 @@ the host is transparent to multicast.
 cat /sys/class/net/vmbr999/bridge/multicast_snooping
 ```
 
-Expected: `0`. If `1`, the bridge is performing its own IGMP snooping without
+Expected: the chosen snooping policy (0 for deliberate flooding; 1 for working snooping), not a universal required value.. If `1`, the bridge is performing its own IGMP snooping without
 a querier and will eventually stop delivering multicast to VM tap interfaces.
 
 Fix:
@@ -721,12 +747,12 @@ A firewall that drops multicast causes two different symptoms:
 1. **IGMP queries dropped.** The guest kernel must receive the querier's
    general queries to answer them. If they are dropped, the guest joins
    successfully, receives traffic for a few minutes, and then the switch ages
-   out its membership (about 260 seconds with Cisco defaults). See section
+   out its membership (interval depends on configured membership/query timers). See section
    10.4.
 2. **Multicast UDP data dropped.** The application receives nothing even
    though tcpdump inside the guest shows the packets. tcpdump sees packets
-   before the guest firewall. Multicast UDP is not "established" traffic, so
-   connection tracking does not let it through.
+   before the guest firewall. Do not rely on an established/related rule to admit a new
+   unsolicited multicast feed; inspect effective rule counters.
 
 #### Guest Firewall — nftables
 
@@ -741,7 +767,8 @@ sudo nft list ruleset
 systemctl is-enabled nftables
 ```
 
-An empty output means no guest firewall is filtering traffic.
+An empty nftables ruleset does not exclude other host, hypervisor, or network
+filters. Inspect the effective path.
 
 If the guest has a default-drop input policy, add rules for IGMP and the
 application's UDP ports. Example `/etc/nftables.conf` input chain:
@@ -755,8 +782,6 @@ table inet filter {
 
         # IGMP queries from the switch querier (IPv4)
         ip protocol igmp accept
-        # MLD and other ICMPv6 (IPv6 multicast membership)
-        meta l4proto ipv6-icmp accept
 
         # Multicast application data on VLAN 2601
         iifname "eth1" ip daddr 239.0.0.0/8 udp dport 5001 accept
@@ -870,7 +895,9 @@ verification and group management.
 
 ### 4.2 Installation
 
-Update package lists and install all required packages:
+Install only the tools needed for the test. The list below excludes optional
+routing daemons; installing a daemon package can start a service. Do not start
+pimd for this intra-VLAN test:
 
 ```
 sudo apt update
@@ -880,8 +907,6 @@ sudo apt install -y \
     tcpdump \
     mcjoin \
     iperf \
-    smcroute \
-    pimd \
     tshark
 ```
 
@@ -1010,8 +1035,9 @@ reports loss and jitter per interval.
 ### 5.4 Using smcroute as a Static Receiver
 
 smcroute can be configured to join multicast groups statically at daemon
-startup. This is useful for applications that expect multicast to be available
-immediately without sending their own IGMP joins.
+startup. This can hold network membership while diagnosing distribution. It does not
+replace a receiving application's own socket membership or prove that the
+application can read the datagrams.
 
 Install smcroute (if not already installed):
 
@@ -1249,8 +1275,9 @@ Rationale:
 
 If the application running in the VM handles its own IGMP joins (which most
 multicast-aware applications do), neither smcroute nor pimd is needed at the
-OS level. smcroute is most useful when the application does not manage its own
-group membership and relies on the OS to maintain the IGMP join.
+OS level. smcroute can hold membership for network-path diagnosis, but another socket
+should still join explicitly. Depending on accidental wildcard cross-delivery
+is not a reliable receiving application design.
 
 ---
 
@@ -1377,7 +1404,7 @@ View pimd logs:
 sudo journalctl -u pimd -f
 ```
 
-Full minimal pimd configuration file for intra-VLAN operation on eth0:
+Optional routed-multicast example only; do not deploy for intra-VLAN reception:
 
 ```
 # /etc/pimd.conf
@@ -1414,7 +1441,7 @@ Verify bridge multicast snooping is disabled:
 cat /sys/class/net/vmbr999/bridge/multicast_snooping
 ```
 
-Expected: `0`
+Expected: the chosen snooping policy (0 for deliberate flooding; 1 for working snooping), not a universal required value.
 
 Verify bridge VLAN membership for a specific tap interface:
 
@@ -1529,7 +1556,7 @@ On PVE04:
 cat /sys/class/net/vmbr999/bridge/multicast_snooping
 ```
 
-Expected: `0`
+Expected: the chosen snooping policy (0 for deliberate flooding; 1 for working snooping), not a universal required value.
 
 **Step 2 — Verify IGMP snooping querier on SWITCH01**
 
@@ -1797,8 +1824,8 @@ out.
 systemctl status smcroute
 ```
 
-Step 4 — Check the IGMP membership interval. The default query interval is
-125 seconds and the default membership timeout is 260 seconds
+Step 4 — Check the IGMP membership interval. An illustrative query interval is
+125 seconds with a computed membership interval of 260 seconds
 (robustness 2 × 125 s query interval + 10 s maximum response time). If the
 querier is sending queries but the VM is not responding, the switch will
 remove the entry after 260 seconds. Also check that no firewall inside the VM
@@ -1956,9 +1983,9 @@ matches traffic from a sender bound to that address, such as
 
 The IGMP join is different. When an application joins without naming an
 interface, the kernel looks up the group address with no source address. A
-`from` rule never matches that lookup. **Keep the `main`-table 239.0.0.0/8 route
-from section 3.3 even when using policy routing**, or joins will follow the
-default route.
+`from` rule never matches that lookup. For applications relying on default membership-interface selection, inspect
+the applicable lookup and add a scoped route only if needed. Applications that
+name the membership interface explicitly do not require a blanket 239/8 route.
 
 **Example: a dedicated table for VLAN 2601.**
 
@@ -2108,8 +2135,9 @@ Values:
 
 **The effective value is the higher of `net.ipv4.conf.all.rp_filter` and
 `net.ipv4.conf.<interface>.rp_filter`.** Setting the interface to 2 makes it
-loose whatever `all` is, but setting `all` to 0 or 2 has no effect on an
-interface that is set to 1.
+loose whatever `all` is. With interface=1, all=0 keeps strict mode,
+whereas all=2 makes the effective mode loose. Setting only the interface to 0
+cannot disable filtering when all remains nonzero.
 
 Check every value on the system:
 
@@ -2179,9 +2207,6 @@ an interface appears, but verify after reboot.
 host itself sends or receives (section 3.3). For VM traffic, check rp_filter
 inside the guest.
 
-**IPv6.** The kernel's `rp_filter` sysctl is IPv4 only. IPv6 reverse path
-filtering on Debian is done only if a firewall rule implements it (for example
-nftables `fib saddr . iif oif missing drop`).
 
 ### 11.4 igmp_max_memberships — Host and Guest Limits
 
@@ -2200,7 +2225,6 @@ Related limits:
 |-------------------------------------------|---------|-----------------------------------------------------------|
 | net.ipv4.igmp_max_memberships             | 20      | Groups per IPv4 socket                                    |
 | net.ipv4.igmp_max_msf                     | 10      | Sources per IPv4 source filter (SSM include/exclude list) |
-| net.ipv6.mld_max_msf                      | 64      | Sources per IPv6 source filter                            |
 | /sys/class/net/vmbr999/bridge/multicast_hash_max | kernel default | Groups the bridge can track while snooping   |
 
 There is no host-wide group limit in the kernel: many sockets can each join up
@@ -2439,8 +2463,7 @@ Mitigations, in order of preference:
 1. The application binds to the group address (`239.1.1.1:5001`) instead of
    `0.0.0.0:5001`.
 2. The application sets `IP_MULTICAST_ALL` to 0 on its socket
-   (`IPV6_MULTICAST_ALL` for IPv6, kernel 4.20 or later; Debian 12 and 13
-   qualify).
+   (this guide qualifies only the IPv4 setting).
 3. Use different ports for different groups.
 
 There is no system-wide sysctl for this option.
@@ -2603,4 +2626,87 @@ enable VM NIC multiqueue; check the VM's CPU load.
 | ufw                  | Uncomplicated Firewall; a simplified front end to the Linux firewall.        |
 | vmbr999              | The VLAN-aware Linux bridge on PVE hosts connecting VMs to the network.       |
 | VRF                  | Virtual Routing and Forwarding. Isolated routing table bound to interfaces.   |
-| 239.0.0.0/8          | Administratively scoped multicast range. Private use, not internet-routable.  |
+| 239.0.0.0/8          | Administratively scoped multicast range. Administratively scoped; configured boundaries enforce scope.  |
+
+## Appendix A — Acronyms and meanings
+
+Literal command/API identifiers, interface names and lab device names are not
+acronyms. Product names (such as IOS XE, ESXi and VirtIO) identify platforms;
+use the vendor documentation for their release-specific behavior.
+
+| Term | Meaning |
+|---|---|
+| BPDU | Bridge Protocol Data Unit |
+| CLI | Command-Line Interface |
+| CPU | Central Processing Unit |
+| DHCP | Dynamic Host Configuration Protocol |
+| GUI | Graphical User Interface |
+| ID | Identifier |
+| IGMP | Internet Group Management Protocol |
+| IP | Internet Protocol |
+| IPv4 | Internet Protocol version 4 |
+| IPv6 | Internet Protocol version 6 (outside this guide's configuration coverage) |
+| LACP | Link Aggregation Control Protocol |
+| MAC | Media Access Control |
+| MDB | Multicast Database |
+| MFC | Multicast Forwarding Cache |
+| MLD | Multicast Listener Discovery (outside this guide's configuration coverage) |
+| NIC | Network Interface Card |
+| OS | Operating System |
+| PIM | Protocol Independent Multicast |
+| PIM-SM | Protocol Independent Multicast — Sparse Mode |
+| PVE | Proxmox Virtual Environment |
+| RHEL | Red Hat Enterprise Linux |
+| RP | Rendezvous Point |
+| RPF | Reverse Path Forwarding |
+| SM | Sparse Mode |
+| SSM | Source-Specific Multicast |
+| STP | Spanning Tree Protocol |
+| TTL | Time to Live |
+| TX | Transmit |
+| UDP | User Datagram Protocol |
+| UID | User Identifier |
+| VE | Virtual Environment |
+| VIF | Virtual Interface (multicast forwarding context) |
+| VLAN | Virtual Local Area Network |
+| VM | Virtual Machine |
+| VRF | Virtual Routing and Forwarding |
+| ALLMULTI | All-multicast receive flag (interface setting) |
+| BPF | Berkeley Packet Filter |
+| DVMRP | Distance Vector Multicast Routing Protocol |
+| MII | Media Independent Interface |
+| PVID | Port VLAN Identifier |
+| QEMU | Quick Emulator (virtualization software) |
+| TOC | Table of Contents |
+
+## Appendix B — Verification sources
+
+Accessed/reviewed 2026-10-17. These primary sources support the corrected
+mechanisms, not a claim that every command or platform was tested. Configuration
+choices and example topology are project guidance. No hardware/VM lab validation
+was performed during this revision. Pin tool versions and verify installed help,
+service units, policy and vendor release notes before deployment.
+
+| ID | Primary source | Verification scope |
+|---|---|---|
+| L1 | [Linux bridge documentation](https://www.kernel.org/doc/html/latest/networking/bridge.html) | Bridge MDB, snooping, querier and flooding controls |
+| L2 | [Linux kernel IP sysctl documentation](https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html) | Effective rp_filter calculation and membership limits; inspect actual host values |
+| L3 | [Linux IPv4 socket documentation](https://man7.org/linux/man-pages/man7/ip.7.html) | IPv4 membership/socket behavior |
+| L3a | [Debian IPv4 socket manual](https://manpages.debian.org/trixie/manpages/ip.7.en.html) | IP_MULTICAST_ALL and family-specific isolation |
+| L4 | [Linux socket manual](https://man7.org/linux/man-pages/man7/socket.7.html) | Receive buffers, effective sizes and overflow observations |
+| L5 | [Upstream mcjoin](https://github.com/troglobit/mcjoin) | Test-tool interface and version-specific options |
+| L6 | [Upstream smcroute configuration manual](https://github.com/troglobit/smcroute/blob/master/man/smcroute.conf.5) | Membership and routing are distinct operations |
+| L7 | [Upstream iperf2 manual](https://iperf2.sourceforge.io/iperf-manpage.html) | Multicast testing; not interchangeable with iperf3 |
+| L8 | [systemd service manual](https://man7.org/linux/man-pages/man5/systemd.service.5.html) | Service lifecycle integration; installed unit/build options still need checking |
+| L9 | [tcpdump manual](https://man7.org/linux/man-pages/man8/tcpdump.8.html) | Capture options and observation limitations |
+| G1 | [RFC 2365 — Administratively Scoped IP Multicast](https://www.rfc-editor.org/rfc/rfc2365.html) | 239/8 scope requires configured administrative boundaries; it is not inherent authentication or isolation |
+
+### Qualification still required
+
+| Evidence | Status |
+|---|---|
+| Exact OS/device/software versions and effective policy | Record and test at the site |
+| Commands/scripts and complete data path | Not executed during this review |
+| Throughput, loss, failover and recovery | Not measured; examples are not guarantees |
+| IPv6/MLD | Explicitly outside this guide |
+| Proxmox/ifupdown2 option spelling and live reconfiguration | Verify installed version; attempted online admin-guide retrieval was unavailable |

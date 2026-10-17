@@ -1,18 +1,34 @@
 # Multicast Reference Guide — Linux (RHEL 9 / RHEL 10), Bare Metal and VMware vSphere 9
 
+**Coverage: IPv4 multicast only.** IPv6/MLD configuration and validation are
+outside this guide. mcgw itself retains its separate IPv4/IPv6 design scope.
+
 | Field          | Detail                                    |
 |----------------|-------------------------------------------|
 | Version        | 1.0.0                                     |
-| Last Updated   | 20261016                                  |
+| Last Updated   | 20261017                                  |
 | Author         | sysadmin                                  |
 | Filename       | MulticastReference-LinuxRHEL9-10_r1.0.0.md |
 
 ---
 
+## Scope and command use
+
+| Item | Boundary |
+|---|---|
+| Relationship to mcgw | Supporting platform reference; [architecture](../architecture.md) owns mcgw requirements |
+| Lab examples | VLAN 2601, hostnames, interface names and addresses illustrate a topology; substitute verified site values |
+| Evidence | Primary-source review on 2026-10-17; no new device/VM tests executed; exact deployment builds remain unqualified |
+| Inspect | `show`, `Get-*`, `ip ... show`, `cat`, status and bounded captures collect evidence; privileges may still be needed |
+| Change | Configuration stanzas, route/address additions, firewall edits, package installation and service commands change state; select explicitly and retain rollback settings |
+| Active test | Senders/joins create traffic/membership; choose interface, rate, duration and destination deliberately |
+| Capture limit | Capture visibility is not application receipt; check drops and observation point |
+
 ## Revision History
 
 | Version | Date     | Author   | Change Summary                                                                 |
 |---------|----------|----------|--------------------------------------------------------------------------------|
+| Review | 20261017 | scufflegrits | IPv4-only scope; technical corrections, clickable navigation, acronym and verification-source appendices; filename/version retained |
 | 1.0.0   | 20261016 | sysadmin | Initial release. Covers RHEL 9 and RHEL 10 on bare metal and as VMware vSphere 9 guests |
 
 ---
@@ -21,7 +37,7 @@
 > This guide covers Red Hat Enterprise Linux 9.x and 10.x in two deployment
 > forms: installed directly on physical servers (bare metal), and running as
 > guest VMs on VMware vSphere 9 (ESXi 9 hosts, vCenter 9). It is the RHEL
-> companion to MulticastReference-LinuxDebian_r1.0.2.md, which covers Debian
+> companion to [Debian/Proxmox guide](MulticastReference-LinuxDebian_r1.0.3.md), which covers Debian
 > guests on Proxmox. Network topology, VLAN numbering, and switch behavior are
 > the same as in MulticastReference-Cisco_r1.0.0.md.
 >
@@ -37,77 +53,86 @@
 > - Package versions differ. Verify any package with `dnf info <package>`
 >   before deploying.
 >
-> RHEL defaults differ from Debian in three ways that matter for multicast:
-> **firewalld is enabled by default**, **SELinux is enforcing by default**,
-> and the `smcroute`, `pimd` and `mcjoin` tools are **not packaged** in RHEL
-> or EPEL and must be built from source (section 4.3).
+> Inspect effective firewalld/SELinux settings rather than assume a default.
+> Check tool availability in the approved repositories for the exact release
+> and architecture. Source builds are a fallback, not an unconditional requirement.
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#1-overview)
-2. [VMware vSphere 9 Host Configuration](#2-vmware-vsphere-9-host-configuration)
-   - 2.1 [vSphere Switches and Multicast](#21-vsphere-switches-and-multicast)
-   - 2.2 [Multicast Filtering Mode](#22-multicast-filtering-mode)
-   - 2.3 [Recommended Switch and Port Group Configuration](#23-recommended-switch-and-port-group-configuration)
-   - 2.4 [Port Group VLAN Tagging](#24-port-group-vlan-tagging)
-   - 2.5 [Uplinks, NIC Teaming and Multicast](#25-uplinks-nic-teaming-and-multicast)
-   - 2.6 [Verifying on the ESXi Host](#26-verifying-on-the-esxi-host)
-3. [RHEL Network Configuration for Multicast](#3-rhel-network-configuration-for-multicast)
-   - 3.1 [Interface Naming and NetworkManager](#31-interface-naming-and-networkmanager)
-   - 3.2 [Bare Metal — Bond and VLAN Configuration](#32-bare-metal--bond-and-vlan-configuration)
-   - 3.3 [VMware Guest — vmxnet3 Interface Configuration](#33-vmware-guest--vmxnet3-interface-configuration)
-   - 3.4 [Multicast Interface Selection on Multi-Homed Machines](#34-multicast-interface-selection-on-multi-homed-machines)
-   - 3.5 [firewalld and Multicast](#35-firewalld-and-multicast)
-   - 3.6 [SELinux and Multicast Tools](#36-selinux-and-multicast-tools)
-4. [Required Packages](#4-required-packages)
-   - 4.1 [Package Overview](#41-package-overview)
-   - 4.2 [Installation from RHEL and EPEL](#42-installation-from-rhel-and-epel)
-   - 4.3 [Building smcroute, mcjoin and pimd from Source](#43-building-smcroute-mcjoin-and-pimd-from-source)
-5. [Multicast Receiver Configuration](#5-multicast-receiver-configuration)
-   - 5.1 [Joining a Multicast Group Manually](#51-joining-a-multicast-group-manually)
-   - 5.2 [Using mcjoin as a Receiver](#52-using-mcjoin-as-a-receiver)
-   - 5.3 [Using iperf2 as a Receiver](#53-using-iperf2-as-a-receiver)
-   - 5.4 [Using socat as a Receiver](#54-using-socat-as-a-receiver)
-   - 5.5 [Using smcroute as a Static Receiver](#55-using-smcroute-as-a-static-receiver)
-   - 5.6 [Using pimd as a Receiver](#56-using-pimd-as-a-receiver)
-6. [Multicast Sender Configuration](#6-multicast-sender-configuration)
-   - 6.1 [Using mcjoin as a Sender](#61-using-mcjoin-as-a-sender)
-   - 6.2 [Using iperf2 as a Sender](#62-using-iperf2-as-a-sender)
-   - 6.3 [Using socat as a Sender](#63-using-socat-as-a-sender)
-   - 6.4 [smcroute Static Forwarding](#64-smcroute-static-forwarding)
-7. [smcroute vs pimd — Which to Use](#7-smcroute-vs-pimd--which-to-use)
-   - 7.1 [smcroute Overview](#71-smcroute-overview)
-   - 7.2 [pimd Overview](#72-pimd-overview)
-   - 7.3 [Recommendation for This Environment](#73-recommendation-for-this-environment)
-8. [systemd Service Configuration](#8-systemd-service-configuration)
-   - 8.1 [smcroute as a systemd Service](#81-smcroute-as-a-systemd-service)
-   - 8.2 [pimd as a systemd Service](#82-pimd-as-a-systemd-service)
-9. [Testing and Verification](#9-testing-and-verification)
-   - 9.1 [Verification Commands — ESXi Host](#91-verification-commands--esxi-host)
-   - 9.2 [Verification Commands — RHEL Host or Guest](#92-verification-commands--rhel-host-or-guest)
-   - 9.3 [Worked End-to-End Test Scenario](#93-worked-end-to-end-test-scenario)
-10. [Troubleshooting](#10-troubleshooting)
-    - 10.1 [Multicast Not Leaving the RHEL System](#101-multicast-not-leaving-the-rhel-system)
-    - 10.2 [Multicast Not Arriving at the RHEL System](#102-multicast-not-arriving-at-the-rhel-system)
-    - 10.3 [IGMP Join Not Seen by Switch](#103-igmp-join-not-seen-by-switch)
-    - 10.4 [Multicast Works Briefly Then Stops](#104-multicast-works-briefly-then-stops)
-    - 10.5 [VM Receiving Groups It Did Not Join](#105-vm-receiving-groups-it-did-not-join)
-    - 10.6 [Multicast Interrupted After vMotion or Uplink Failover](#106-multicast-interrupted-after-vmotion-or-uplink-failover)
-11. [Deep Dive — Advanced Multicast Interface Control](#11-deep-dive--advanced-multicast-interface-control)
-    - 11.1 [Policy Routing with ip rule](#111-policy-routing-with-ip-rule)
-    - 11.2 [Multicast Routing Tables](#112-multicast-routing-tables)
-    - 11.3 [rp_filter — Reverse Path Filtering](#113-rp_filter--reverse-path-filtering)
-    - 11.4 [igmp_max_memberships and Related Limits](#114-igmp_max_memberships-and-related-limits)
-    - 11.5 [VRFs — Virtual Routing and Forwarding](#115-vrfs--virtual-routing-and-forwarding)
-    - 11.6 [smcroute Interface Binding in Multi-Interface Environments](#116-smcroute-interface-binding-in-multi-interface-environments)
-    - 11.7 [pimd Interface Binding in Multi-Interface Environments](#117-pimd-interface-binding-in-multi-interface-environments)
-    - 11.8 [Socket-Level Controls — IP_MULTICAST_ALL and Receive Buffers](#118-socket-level-controls--ip_multicast_all-and-receive-buffers)
-    - 11.9 [Deep Dive Troubleshooting](#119-deep-dive-troubleshooting)
-12. [Glossary](#12-glossary)
-
----
+- [Scope and command use](#scope-and-command-use)
+- [Revision History](#revision-history)
+- [1. Overview](#1-overview)
+- [2. VMware vSphere 9 Host Configuration](#2-vmware-vsphere-9-host-configuration)
+  - [2.1 vSphere Switches and Multicast](#21-vsphere-switches-and-multicast)
+  - [2.2 Multicast Filtering Mode](#22-multicast-filtering-mode)
+  - [2.3 Recommended Switch and Port Group Configuration](#23-recommended-switch-and-port-group-configuration)
+  - [2.4 Port Group VLAN Tagging](#24-port-group-vlan-tagging)
+  - [2.5 Uplinks, NIC Teaming and Multicast](#25-uplinks-nic-teaming-and-multicast)
+  - [2.6 Verifying on the ESXi Host](#26-verifying-on-the-esxi-host)
+- [3. RHEL Network Configuration for Multicast](#3-rhel-network-configuration-for-multicast)
+  - [3.1 Interface Naming and NetworkManager](#31-interface-naming-and-networkmanager)
+  - [3.2 Bare Metal — Bond and VLAN Configuration](#32-bare-metal--bond-and-vlan-configuration)
+  - [3.3 VMware Guest — vmxnet3 Interface Configuration](#33-vmware-guest--vmxnet3-interface-configuration)
+  - [3.4 Multicast Interface Selection on Multi-Homed Machines](#34-multicast-interface-selection-on-multi-homed-machines)
+    - [How Linux Selects the Multicast Interface](#how-linux-selects-the-multicast-interface)
+    - [The Problem With Multiple Interfaces](#the-problem-with-multiple-interfaces)
+    - [Mechanism 1 — Add a Specific Multicast Route (Recommended)](#mechanism-1--add-a-specific-multicast-route-recommended)
+    - [Mechanism 2 — Bind the Application to a Specific Interface](#mechanism-2--bind-the-application-to-a-specific-interface)
+    - [Mechanism 3 — Route Metrics and never-default](#mechanism-3--route-metrics-and-never-default)
+    - [Verifying Which Interface Multicast Is Using](#verifying-which-interface-multicast-is-using)
+    - [Recommendation for This Environment](#recommendation-for-this-environment)
+  - [3.5 firewalld and Multicast](#35-firewalld-and-multicast)
+  - [3.6 SELinux and Multicast Tools](#36-selinux-and-multicast-tools)
+- [4. Required Packages](#4-required-packages)
+  - [4.1 Package Overview](#41-package-overview)
+  - [4.2 Installation from RHEL and EPEL](#42-installation-from-rhel-and-epel)
+  - [4.3 Building smcroute, mcjoin and pimd from Source](#43-building-smcroute-mcjoin-and-pimd-from-source)
+- [5. Multicast Receiver Configuration](#5-multicast-receiver-configuration)
+  - [5.1 Joining a Multicast Group Manually](#51-joining-a-multicast-group-manually)
+  - [5.2 Using mcjoin as a Receiver](#52-using-mcjoin-as-a-receiver)
+  - [5.3 Using iperf2 as a Receiver](#53-using-iperf2-as-a-receiver)
+  - [5.4 Using socat as a Receiver](#54-using-socat-as-a-receiver)
+  - [5.5 Using smcroute as a Static Receiver](#55-using-smcroute-as-a-static-receiver)
+  - [5.6 Using pimd as a Receiver](#56-using-pimd-as-a-receiver)
+- [6. Multicast Sender Configuration](#6-multicast-sender-configuration)
+  - [6.1 Using mcjoin as a Sender](#61-using-mcjoin-as-a-sender)
+  - [6.2 Using iperf2 as a Sender](#62-using-iperf2-as-a-sender)
+  - [6.3 Using socat as a Sender](#63-using-socat-as-a-sender)
+  - [6.4 smcroute Static Forwarding](#64-smcroute-static-forwarding)
+- [7. smcroute vs pimd — Which to Use](#7-smcroute-vs-pimd--which-to-use)
+  - [7.1 smcroute Overview](#71-smcroute-overview)
+  - [7.2 pimd Overview](#72-pimd-overview)
+  - [7.3 Recommendation for This Environment](#73-recommendation-for-this-environment)
+- [8. systemd Service Configuration](#8-systemd-service-configuration)
+  - [8.1 smcroute as a systemd Service](#81-smcroute-as-a-systemd-service)
+  - [8.2 pimd as a systemd Service](#82-pimd-as-a-systemd-service)
+- [9. Testing and Verification](#9-testing-and-verification)
+  - [9.1 Verification Commands — ESXi Host](#91-verification-commands--esxi-host)
+  - [9.2 Verification Commands — RHEL Host or Guest](#92-verification-commands--rhel-host-or-guest)
+  - [9.3 Worked End-to-End Test Scenario](#93-worked-end-to-end-test-scenario)
+- [10. Troubleshooting](#10-troubleshooting)
+  - [10.1 Multicast Not Leaving the RHEL System](#101-multicast-not-leaving-the-rhel-system)
+  - [10.2 Multicast Not Arriving at the RHEL System](#102-multicast-not-arriving-at-the-rhel-system)
+  - [10.3 IGMP Join Not Seen by Switch](#103-igmp-join-not-seen-by-switch)
+  - [10.4 Multicast Works Briefly Then Stops](#104-multicast-works-briefly-then-stops)
+  - [10.5 VM Receiving Groups It Did Not Join](#105-vm-receiving-groups-it-did-not-join)
+  - [10.6 Multicast Interrupted After vMotion or Uplink Failover](#106-multicast-interrupted-after-vmotion-or-uplink-failover)
+- [11. Deep Dive — Advanced Multicast Interface Control](#11-deep-dive--advanced-multicast-interface-control)
+  - [11.1 Policy Routing with ip rule](#111-policy-routing-with-ip-rule)
+  - [11.2 Multicast Routing Tables](#112-multicast-routing-tables)
+  - [11.3 rp_filter — Reverse Path Filtering](#113-rp_filter--reverse-path-filtering)
+  - [11.4 igmp_max_memberships and Related Limits](#114-igmp_max_memberships-and-related-limits)
+  - [11.5 VRFs — Virtual Routing and Forwarding](#115-vrfs--virtual-routing-and-forwarding)
+  - [11.6 smcroute Interface Binding in Multi-Interface Environments](#116-smcroute-interface-binding-in-multi-interface-environments)
+  - [11.7 pimd Interface Binding in Multi-Interface Environments](#117-pimd-interface-binding-in-multi-interface-environments)
+  - [11.8 Socket-Level Controls — IP_MULTICAST_ALL and Receive Buffers](#118-socket-level-controls--ip_multicast_all-and-receive-buffers)
+  - [11.9 Deep Dive Troubleshooting](#119-deep-dive-troubleshooting)
+- [12. Glossary](#12-glossary)
+- [Appendix A — Acronyms and meanings](#appendix-a--acronyms-and-meanings)
+- [Appendix B — Verification sources](#appendix-b--verification-sources)
+  - [Qualification still required](#qualification-still-required)
 
 ## 1. Overview
 
@@ -211,8 +236,8 @@ There are two modes.
 
 | Mode                 | Available on | Behavior                                                                                   |
 |----------------------|--------------|--------------------------------------------------------------------------------------------|
-| Basic (default)      | vSS and vDS  | Forwards by destination multicast MAC, using the multicast filter list the guest driver programs into its vNIC. Source addresses are ignored. |
-| IGMP/MLD snooping    | vDS only     | Snoops IGMPv1/v2/v3 and MLDv1/v2 from the VMs. Forwards by group IP address and, for IGMPv3/MLDv2, by source. |
+| Basic (inspect effective setting)      | vSS and vDS  | Forwards by destination multicast MAC, using the multicast filter list the guest driver programs into its vNIC. Source addresses are ignored. |
+| IGMP/MLD snooping    | vDS only     | Product mode named IGMP/MLD snooping; this guide considers only its IPv4 IGMP/group/source behavior and requires build qualification. |
 
 Consequences of basic mode:
 
@@ -296,7 +321,7 @@ basic mode.
 
 With VST, multicast in VLAN 2601 is delivered only to vNICs in port groups with
 VLAN ID 2601. VLAN isolation is enforced by the vSphere switch regardless of
-the multicast filtering mode, so there is no cross-VLAN multicast leakage.
+the multicast filtering mode, under correct port-group/trunk configuration; verify rather than assume isolation.
 
 ### 2.5 Uplinks, NIC Teaming and Multicast
 
@@ -316,8 +341,8 @@ is sent to that port only. This is correct as long as the VM stays on that
 uplink.
 
 With a port-channel (IP hash or LAG), the switch treats both uplinks as one
-logical port, so membership survives a member link failure without waiting for
-the next query. This matches the LACP bond design used for the Proxmox hosts.
+logical port, so membership is associated with the logical port-channel; validate actual
+failover/convergence instead of assuming uninterrupted delivery. This matches the LACP bond design used for the Proxmox hosts.
 
 **Do not mix:** IP hash on the ESXi side requires a static EtherChannel on the
 switch, and a LAG requires LACP. A mismatch causes MAC flapping and
@@ -611,8 +636,9 @@ sudo nmcli connection up ens224
 
 #### Mechanism 2 — Bind the Application to a Specific Interface
 
-Applications that set the interface on their socket override the routing table
-for that socket only. This is the most targeted fix.
+Explicit membership-interface selection controls the join. Outgoing multicast
+interface selection and local source binding are separate controls; inspect the
+chosen tool's socket behavior and confirm by capture.
 
 mcjoin, with `-i`:
 
@@ -695,7 +721,8 @@ cat /proc/net/igmp
 ```
 1. Set ipv4.never-default yes on every data/multicast interface.
 
-2. Add 239.0.0.0/8 to ipv4.routes on the multicast interface (Mechanism 1).
+2. If default interface selection needs it, add a deliberately scoped route
+   after checking other feeds; explicit membership selection is preferable.
 
 3. Always name the interface in test tools (mcjoin -i, iperf -B ...%dev,
    smcroute mgroup from <if>). Belt-and-suspenders with Mechanism 1.
@@ -711,17 +738,17 @@ cat /proc/net/igmp
 
 ### 3.5 firewalld and Multicast
 
-firewalld is enabled by default on RHEL 9 and RHEL 10. Unlike a default Debian
-install, inbound multicast is affected in two ways:
+Inspect whether firewalld is active, which zone owns the ingress interface,
+and whether the current policy admits data and queries:
 
-1. **IGMP queries are dropped.** The kernel must receive the querier's general
+1. **IGMP queries can be blocked by policy.** The kernel must receive the querier's general
    queries to answer them. If the firewall drops IGMP, the RHEL system joins
    successfully, receives traffic for a few minutes, and then the switch ages
-   out its membership (about 260 seconds with Cisco defaults). See section
+   out its membership (timing depends on the effective membership/query settings). See section
    10.4.
-2. **Multicast UDP data is dropped** unless the destination port is allowed in
-   the zone of the receiving interface. Multicast UDP is not "established"
-   traffic, so connection tracking does not let it through.
+2. **Multicast UDP data requires an effective allow path**; inspect whether the destination port/group is allowed in
+   the zone of the receiving interface. Do not rely on connection tracking alone to admit a new
+   unsolicited feed; inspect actual rule counters.
 
 Check the zone of each interface:
 
@@ -760,13 +787,10 @@ Verify:
 sudo firewall-cmd --zone=internal --list-all
 ```
 
-For IPv6 multicast, MLD is ICMPv6. firewalld accepts ICMPv6 unless the zone has
-`icmp-block` entries or `icmp-block-inversion` enabled; check with
-`--list-all`.
 
 **Do not add iptables rules alongside firewalld.** firewalld uses nftables on
 RHEL 9 and RHEL 10. Rules added with `iptables` or `nft` directly are not part
-of firewalld's configuration, are lost on `firewall-cmd --reload`, and make the
+of firewalld's configuration, have lifecycle/ordering independent of firewalld and make the
 effective policy hard to read. If firewalld is disabled by policy and nftables
 is managed directly, add the equivalent rules to the managed ruleset.
 
@@ -778,20 +802,16 @@ sudo nft list ruleset | less
 
 ### 3.6 SELinux and Multicast Tools
 
-SELinux is enforcing by default on RHEL. It does not affect basic multicast
-membership or UDP send/receive for interactive tools run by an administrator,
-because those run unconfined.
+Inspect enforcing state, process domain, file labels and AVC denials on the
+actual host. Service confinement depends on policy and labels, not simply the
+binary installation directory. Do not assume administrator tools are always
+unconfined or that every custom service enters `unconfined_service_t`.
 
-It matters for tools installed from source and run as services:
-
-- A binary installed under `/usr/sbin` or `/usr/local/sbin` and started by a
-  unit file in `/etc/systemd/system/` runs as `unconfined_service_t`. It is not
-  blocked, but it is not confined either.
-- Files copied into place with `cp` or `mv` from a home directory can keep the
-  wrong label. Restore default labels after installing:
+After installing specific files, restore expected labels according to the
+host policy; do not broadly relabel unrelated system trees.
 
 ```
-sudo restorecon -Rv /usr/sbin/smcrouted /usr/sbin/smcroutectl /etc/smcroute.conf
+sudo restorecon -v /usr/sbin/smcrouted /usr/sbin/smcroutectl /etc/smcroute.conf
 ```
 
 Check the domain a service is running in:
@@ -806,9 +826,8 @@ Check for recent denials:
 sudo ausearch -m AVC -ts recent
 ```
 
-Do not disable SELinux or set it to permissive to "fix" multicast. In this
-environment, multicast failures are almost always caused by interface selection,
-firewalld, rp_filter, or the switch/querier path, not by SELinux.
+Do not disable SELinux or set it to permissive to "fix" multicast. Check interface selection, firewalld, rp_filter, switch/querier state and actual
+AVC evidence independently; do not rule out a layer solely from an assumed frequency.
 
 ---
 
@@ -825,9 +844,9 @@ firewalld, rp_filter, or the switch/querier path, not by SELinux.
 | wireshark-cli    | RHEL AppStream    | `tshark` for headless capture with protocol decoding         |
 | ethtool          | RHEL BaseOS       | NIC driver and counter inspection                            |
 | iperf            | EPEL              | iperf 2 — throughput testing with multicast UDP support      |
-| smcroute         | Source (GitHub)   | Static multicast group join and routing daemon               |
-| mcjoin           | Source (GitHub)   | Minimal multicast join and send tool for testing             |
-| pimd             | Source (GitHub)   | PIM-SM/SSM multicast routing daemon (routed environments only) |
+| smcroute         | Check repo / source fallback   | Static multicast group join and routing daemon               |
+| mcjoin           | Check repo / source fallback   | Minimal multicast join and send tool for testing             |
+| pimd             | Check repo / source fallback   | PIM-SM/SSM multicast routing daemon (routed environments only) |
 | open-vm-tools    | RHEL AppStream    | VMware guest tools (VMware guests only)                      |
 
 Notes:
@@ -835,10 +854,10 @@ Notes:
 - **iperf3 does not support multicast.** The `iperf3` package in RHEL is useful
   for unicast throughput testing only. Use `iperf` (iperf 2) from EPEL for
   multicast tests.
-- **smcroute, mcjoin and pimd are not in RHEL or EPEL** for RHEL 9 or RHEL 10
-  at the time of writing. Fedora carries some of them, but Fedora packages are
-  not supported on RHEL. Build them from source (section 4.3), or check EPEL
-  again with `dnf info <package>` before each deployment.
+- Check `dnf info smcroute mcjoin pimd` against approved repositories for the
+  exact release/architecture. Fedora or COPR availability is not proof of official
+  RHEL/EPEL availability. If absent, an approved pinned source build (section 4.3)
+  is a fallback, with its own update responsibility.
 - socat is the fallback test tool when EPEL and source builds are not allowed.
 
 ### 4.2 Installation from RHEL and EPEL
@@ -918,7 +937,7 @@ make -j"$(nproc)"
 sudo make install-strip
 ```
 
-With `systemd-devel` present, the build installs a `smcroute.service` unit.
+Unit installation depends on configure/build options; inspect the build output.
 Check with `systemctl cat smcroute`. If no unit was installed, use the unit in
 section 8.1.
 
@@ -945,7 +964,7 @@ sudo make install-strip
 After installing, restore SELinux labels (section 3.6):
 
 ```
-sudo restorecon -Rv /usr/sbin /usr/bin
+sudo restorecon -v /usr/sbin/smcrouted /usr/sbin/smcroutectl /usr/bin/mcjoin /usr/sbin/pimd
 ```
 
 Verify:
@@ -2025,9 +2044,8 @@ matches traffic from a sender bound to that address, such as
 
 The IGMP join is different. When an application joins without naming an
 interface, the kernel looks up the group address with no source address. A
-`from` rule never matches that lookup. **Keep the `main`-table 239.0.0.0/8 route
-from section 3.4 even when using policy routing**, or joins will follow the
-default route.
+`from` rule never matches that lookup. For default membership-interface selection, inspect the applicable lookup;
+an explicit membership interface avoids dependence on a blanket 239/8 route.
 
 **Example: a dedicated table for VLAN 2601.**
 
@@ -2148,8 +2166,9 @@ Values:
 
 **The effective value is the higher of `net.ipv4.conf.all.rp_filter` and
 `net.ipv4.conf.<interface>.rp_filter`.** Setting the interface to 2 makes it
-loose whatever `all` is, but setting `all` to 0 or 2 has no effect on an
-interface that is set to 1.
+loose whatever `all` is. With interface=1, all=0 keeps strict mode,
+whereas all=2 makes the effective mode loose. Setting only the interface to 0
+cannot disable filtering when all remains nonzero.
 
 Check every value on the system:
 
@@ -2221,10 +2240,6 @@ A per-interface key only applies once the interface exists. For VLAN or bond
 interfaces created by NetworkManager after `systemd-sysctl` has run, systemd
 reapplies matching keys when the interface appears, but verify after reboot.
 
-**IPv6.** The kernel's `rp_filter` sysctl is IPv4 only. On RHEL, IPv6 reverse
-path filtering is done by firewalld (`IPv6_rpfilter` in
-`/etc/firewalld/firewalld.conf`, enabled by default). It applies to IPv6
-multicast from unexpected sources in the same way.
 
 ### 11.4 igmp_max_memberships and Related Limits
 
@@ -2239,7 +2254,6 @@ Related limits:
 |---------------------------------|---------|---------------------------------------------------------|
 | net.ipv4.igmp_max_memberships   | 20      | Groups per IPv4 socket                                  |
 | net.ipv4.igmp_max_msf           | 10      | Sources per IPv4 source filter (SSM include/exclude list) |
-| net.ipv6.mld_max_msf            | 64      | Sources per IPv6 source filter                          |
 | net.core.optmem_max             | varies  | Per-socket option memory; very large source lists can hit it |
 
 There is no host-wide group limit in the kernel: many sockets can each join up
@@ -2443,8 +2457,7 @@ Mitigations, in order of preference:
 1. The application binds to the group address (`239.1.1.1:5001`) instead of
    `0.0.0.0:5001`.
 2. The application sets `IP_MULTICAST_ALL` to 0 on its socket
-   (`IPV6_MULTICAST_ALL` for IPv6, kernel 4.20 or later; both RHEL 9 and
-   RHEL 10 qualify).
+   (IPv4 coverage only).
 3. Use different ports for different groups.
 
 There is no system-wide sysctl for this option.
@@ -2568,7 +2581,7 @@ VMware, check the VM's vCPU contention (CPU ready time) in vCenter.
 
 | Term                 | Definition                                                                    |
 |----------------------|-------------------------------------------------------------------------------|
-| 239.0.0.0/8          | Administratively scoped multicast range. Private use, not internet-routable.  |
+| 239.0.0.0/8          | Administratively scoped multicast range. Administratively scoped; configured boundaries enforce scope.  |
 | autojoin             | `ip addr add` flag that makes the kernel join a multicast address on an interface. |
 | Basic multicast filtering | vSphere switch mode that forwards multicast by destination MAC from the guest's filter list. |
 | bond0                | LACP 802.3ad bond on bare-metal RHEL servers providing the uplink to SWITCH01. |
@@ -2610,3 +2623,93 @@ VMware, check the VM's vCPU contention (CPU ready time) in vCenter.
 | VRF                  | Virtual Routing and Forwarding. Isolated routing table bound to interfaces.   |
 | vSS                  | vSphere Standard Switch, configured per host.                                 |
 | VST                  | Virtual Switch Tagging: the port group adds the VLAN tag.                     |
+
+## Appendix A — Acronyms and meanings
+
+Literal command/API identifiers, interface names and lab device names are not
+acronyms. Product names (such as IOS XE, ESXi and VirtIO) identify platforms;
+use the vendor documentation for their release-specific behavior.
+
+| Term | Meaning |
+|---|---|
+| AVC | Access Vector Cache (SELinux audit messages) |
+| CPU | Central Processing Unit |
+| DHCP | Dynamic Host Configuration Protocol |
+| EPEL | Extra Packages for Enterprise Linux |
+| EST | External Switch Tagging |
+| ID | Identifier |
+| IGMP | Internet Group Management Protocol |
+| IP | Internet Protocol |
+| IPv4 | Internet Protocol version 4 |
+| IPv6 | Internet Protocol version 6 (outside this guide's configuration coverage) |
+| LACP | Link Aggregation Control Protocol |
+| LAG | Link Aggregation Group |
+| MAC | Media Access Control |
+| MFC | Multicast Forwarding Cache |
+| MLD | Multicast Listener Discovery (outside this guide's configuration coverage) |
+| NIC | Network Interface Card |
+| OS | Operating System |
+| PIM | Protocol Independent Multicast |
+| PIM-SM | Protocol Independent Multicast — Sparse Mode |
+| PIM-SSM | Protocol Independent Multicast for Source-Specific Multicast |
+| RHEL | Red Hat Enterprise Linux |
+| RP | Rendezvous Point |
+| RPF | Reverse Path Forwarding |
+| SELinux | Security-Enhanced Linux |
+| SM | Sparse Mode |
+| SSH | Secure Shell |
+| SSM | Source-Specific Multicast |
+| TTL | Time to Live |
+| UDP | User Datagram Protocol |
+| UID | User Identifier |
+| vCPU | Virtual Central Processing Unit |
+| vDS | vSphere Distributed Switch |
+| VGT | Virtual Guest Tagging |
+| VIF | Virtual Interface (multicast forwarding context) |
+| VLAN | Virtual Local Area Network |
+| VM | Virtual Machine |
+| vNIC | Virtual Network Interface Card |
+| VRF | Virtual Routing and Forwarding |
+| vSS | vSphere Standard Switch |
+| VST | Virtual Switch Tagging |
+| ALLMULTI | All-multicast receive flag (interface setting) |
+| BPF | Berkeley Packet Filter |
+| MII | Media Independent Interface |
+| RARP | Reverse Address Resolution Protocol |
+
+## Appendix B — Verification sources
+
+Accessed/reviewed 2026-10-17. These primary sources support the corrected
+mechanisms, not a claim that every command or platform was tested. Configuration
+choices and example topology are project guidance. No hardware/VM lab validation
+was performed during this revision. Pin tool versions and verify installed help,
+service units, policy and vendor release notes before deployment.
+
+| ID | Primary source | Verification scope |
+|---|---|---|
+| L1 | [Linux bridge documentation](https://www.kernel.org/doc/html/latest/networking/bridge.html) | Bridge MDB, snooping, querier and flooding controls |
+| L2 | [Linux kernel IP sysctl documentation](https://www.kernel.org/doc/html/latest/networking/ip-sysctl.html) | Effective rp_filter calculation and membership limits; inspect actual host values |
+| L3 | [Linux IPv4 socket documentation](https://man7.org/linux/man-pages/man7/ip.7.html) | IPv4 membership/socket behavior |
+| L3a | [Debian IPv4 socket manual](https://manpages.debian.org/trixie/manpages/ip.7.en.html) | IP_MULTICAST_ALL and family-specific isolation |
+| L4 | [Linux socket manual](https://man7.org/linux/man-pages/man7/socket.7.html) | Receive buffers, effective sizes and overflow observations |
+| L5 | [Upstream mcjoin](https://github.com/troglobit/mcjoin) | Test-tool interface and version-specific options |
+| L6 | [Upstream smcroute configuration manual](https://github.com/troglobit/smcroute/blob/master/man/smcroute.conf.5) | Membership and routing are distinct operations |
+| L7 | [Upstream iperf2 manual](https://iperf2.sourceforge.io/iperf-manpage.html) | Multicast testing; not interchangeable with iperf3 |
+| L8 | [systemd service manual](https://man7.org/linux/man-pages/man5/systemd.service.5.html) | Service lifecycle integration; installed unit/build options still need checking |
+| L9 | [tcpdump manual](https://man7.org/linux/man-pages/man8/tcpdump.8.html) | Capture options and observation limitations |
+| R1 | [firewalld configuration manual](https://firewalld.org/documentation/man-pages/firewalld.conf.html) | Policy/backend configuration; no blanket packet-accept/drop conclusion |
+| R2 | [firewall-cmd manual](https://firewalld.org/documentation/man-pages/firewall-cmd.html) | Zone/rule inspection and modification commands |
+| R3 | [Red Hat Using SELinux](https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html/using_selinux/index) | Policy/domain/label inspection; no universal custom-service domain assumed |
+| R4 | [Broadcom multicast filtering-mode article](https://knowledge.broadcom.com/external/article/380617/changing-multicast-filtering-mode-on-dis.html) | Basic versus IGMP/MLD product modes; this article is not vSphere 9 qualification |
+| R5 | [Fedora mcjoin package index](https://packages.fedoraproject.org/pkgs/mcjoin/mcjoin/) | Package availability must be checked per repository/release; Fedora is not proof of EPEL availability |
+| G1 | [RFC 2365 — Administratively Scoped IP Multicast](https://www.rfc-editor.org/rfc/rfc2365.html) | 239/8 scope requires configured administrative boundaries; it is not inherent authentication or isolation |
+
+### Qualification still required
+
+| Evidence | Status |
+|---|---|
+| Exact OS/device/software versions and effective policy | Record and test at the site |
+| Commands/scripts and complete data path | Not executed during this review |
+| Throughput, loss, failover and recovery | Not measured; examples are not guarantees |
+| IPv6/MLD | Explicitly outside this guide |
+| vSphere 9 switch/UI/capture behavior | Verify deployed build; older/general source material is not a vSphere 9 test |

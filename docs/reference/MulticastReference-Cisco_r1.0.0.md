@@ -1,61 +1,80 @@
 # Multicast Reference Guide — Cisco Catalyst 9200 / 9300
 
+**Coverage: IPv4 multicast only.** IPv6/MLD configuration and validation are
+outside this guide. mcgw itself retains its separate IPv4/IPv6 design scope.
+
 | Field          | Detail                          |
 |----------------|---------------------------------|
 | Version        | 1.0.0                           |
-| Last Updated   | 20250517                        |
+| Last Updated   | 20261017                        |
 | Author         | sysadmin                        |
 | Filename       | MulticastReference-Cisco_r1.0.0.md |
 
 ---
 
+## Scope and command use
+
+| Item | Boundary |
+|---|---|
+| Relationship to mcgw | Supporting platform reference; [architecture](../architecture.md) owns mcgw requirements |
+| Lab examples | VLAN 2601, hostnames, interface names and addresses illustrate a topology; substitute verified site values |
+| Evidence | Primary-source review on 2026-10-17; no new device/VM tests executed; exact deployment builds remain unqualified |
+| Inspect | `show`, `Get-*`, `ip ... show`, `cat`, status and bounded captures collect evidence; privileges may still be needed |
+| Change | Configuration stanzas, route/address additions, firewall edits, package installation and service commands change state; select explicitly and retain rollback settings |
+| Active test | Senders/joins create traffic/membership; choose interface, rate, duration and destination deliberately |
+| Capture limit | Capture visibility is not application receipt; check drops and observation point |
+
 ## Revision History
 
 | Version | Date     | Author    | Change Summary  |
 |---------|----------|-----------|-----------------|
+| Review | 20261017 | scufflegrits | IPv4-only scope; technical corrections, clickable navigation, acronym and verification-source appendices; filename/version retained |
 | 1.0.0   | 20250517 | sysadmin  | Initial release |
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#1-overview)
-2. [Multicast Fundamentals](#2-multicast-fundamentals)
-   - 2.1 [How IP Multicast Works](#21-how-ip-multicast-works)
-   - 2.2 [IGMP Versions](#22-igmp-versions)
-   - 2.3 [Multicast Address Ranges](#23-multicast-address-ranges)
-3. [IGMP Snooping](#3-igmp-snooping)
-   - 3.1 [What IGMP Snooping Does](#31-what-igmp-snooping-does)
-   - 3.2 [Default Behavior on IOS-XE](#32-default-behavior-on-ios-xe)
-   - 3.3 [Querier Role and Election](#33-querier-role-and-election)
-   - 3.4 [Querier Source Address Selection](#34-querier-source-address-selection)
-   - 3.5 [Theoretical Scenarios](#35-theoretical-scenarios)
-4. [Layer 2 Only Switch — Access Layer (SWITCH02 Style)](#4-layer-2-only-switch--access-layer-switch02-style)
-   - 4.1 [Characteristics](#41-characteristics)
-   - 4.2 [Recommended Configuration](#42-recommended-configuration)
-   - 4.3 [Verification Commands](#43-verification-commands)
-5. [Aggregation Switch — Mixed L2/L3 (SWITCH01 Style)](#5-aggregation-switch--mixed-l2l3-switch01-style)
-   - 5.1 [Characteristics](#51-characteristics)
-   - 5.2 [Impact of ip multicast-routing on L2 VLANs](#52-impact-of-ip-multicast-routing-on-l2-vlans)
-   - 5.3 [Recommended Configuration](#53-recommended-configuration)
-   - 5.4 [Verification Commands](#54-verification-commands)
-6. [Spanning Tree Interaction with Multicast](#6-spanning-tree-interaction-with-multicast)
-   - 6.1 [TCN-Triggered Multicast Table Flushing](#61-tcn-triggered-multicast-table-flushing)
-   - 6.2 [PortFast Interaction](#62-portfast-interaction)
-   - 6.3 [BPDU Guard Interaction](#63-bpdu-guard-interaction)
-   - 6.4 [Recommended Spanning Tree Settings for Multicast Ports](#64-recommended-spanning-tree-settings-for-multicast-ports)
-7. [RSPAN Interaction with Multicast](#7-rspan-interaction-with-multicast)
-   - 7.1 [General Risk](#71-general-risk)
-   - 7.2 [Worked Example — VLAN 50 and 239.x.x.x](#72-worked-example--vlan-50-and-239xxx)
-   - 7.3 [Mitigation](#73-mitigation)
-8. [Troubleshooting](#8-troubleshooting)
-   - 8.1 [Multicast Not Reaching Receivers](#81-multicast-not-reaching-receivers)
-   - 8.2 [Multicast Flooding to All Ports](#82-multicast-flooding-to-all-ports)
-   - 8.3 [Querier Election Conflicts](#83-querier-election-conflicts)
-   - 8.4 [Multicast Disrupted After Topology Change](#84-multicast-disrupted-after-topology-change)
-9. [Glossary](#9-glossary)
-
----
+- [Scope and command use](#scope-and-command-use)
+- [Revision History](#revision-history)
+- [1. Overview](#1-overview)
+- [2. Multicast Fundamentals](#2-multicast-fundamentals)
+  - [2.1 How IP Multicast Works](#21-how-ip-multicast-works)
+  - [2.2 IGMP Versions](#22-igmp-versions)
+  - [2.3 Multicast Address Ranges](#23-multicast-address-ranges)
+- [3. IGMP Snooping](#3-igmp-snooping)
+  - [3.1 What IGMP Snooping Does](#31-what-igmp-snooping-does)
+  - [3.2 Default Behavior on IOS-XE](#32-default-behavior-on-ios-xe)
+  - [3.3 Querier Role and Election](#33-querier-role-and-election)
+  - [3.4 Querier Source Address Selection](#34-querier-source-address-selection)
+  - [3.5 Theoretical Scenarios](#35-theoretical-scenarios)
+- [4. Layer 2 Only Switch — Access Layer (SWITCH02 Style)](#4-layer-2-only-switch--access-layer-switch02-style)
+  - [4.1 Characteristics](#41-characteristics)
+  - [4.2 Recommended Configuration](#42-recommended-configuration)
+  - [4.3 Verification Commands](#43-verification-commands)
+- [5. Aggregation Switch — Mixed L2/L3 (SWITCH01 Style)](#5-aggregation-switch--mixed-l2l3-switch01-style)
+  - [5.1 Characteristics](#51-characteristics)
+  - [5.2 Impact of ip multicast-routing on L2 VLANs](#52-impact-of-ip-multicast-routing-on-l2-vlans)
+  - [5.3 Recommended Configuration](#53-recommended-configuration)
+  - [5.4 Verification Commands](#54-verification-commands)
+- [6. Spanning Tree Interaction with Multicast](#6-spanning-tree-interaction-with-multicast)
+  - [6.1 TCN-Triggered Multicast Table Flushing](#61-tcn-triggered-multicast-table-flushing)
+  - [6.2 PortFast Interaction](#62-portfast-interaction)
+  - [6.3 BPDU Guard Interaction](#63-bpdu-guard-interaction)
+  - [6.4 Recommended Spanning Tree Settings for Multicast Ports](#64-recommended-spanning-tree-settings-for-multicast-ports)
+- [7. RSPAN Interaction with Multicast](#7-rspan-interaction-with-multicast)
+  - [7.1 General Risk](#71-general-risk)
+  - [7.2 Worked Example — VLAN 50 and 239.x.x.x](#72-worked-example--vlan-50-and-239xxx)
+  - [7.3 Mitigation](#73-mitigation)
+- [8. Troubleshooting](#8-troubleshooting)
+  - [8.1 Multicast Not Reaching Receivers](#81-multicast-not-reaching-receivers)
+  - [8.2 Multicast Flooding to All Ports](#82-multicast-flooding-to-all-ports)
+  - [8.3 Querier Election Conflicts](#83-querier-election-conflicts)
+  - [8.4 Multicast Disrupted After Topology Change](#84-multicast-disrupted-after-topology-change)
+- [9. Glossary](#9-glossary)
+- [Appendix A — Acronyms and meanings](#appendix-a--acronyms-and-meanings)
+- [Appendix B — Verification sources](#appendix-b--verification-sources)
+  - [Qualification still required](#qualification-still-required)
 
 ## 1. Overview
 
@@ -107,22 +126,22 @@ not the MAC level.
 | IGMPv2  | Adds leave group message, faster leave           | Minimum recommended |
 | IGMPv3  | Source-specific multicast, include/exclude modes | Preferred           |
 
-IOS-XE defaults to IGMPv2 on SVIs. Explicit configuration of IGMPv3 is
-recommended where the end devices support it.
+Inspect the SVI IGMP version and snooping-querier version separately.
+IGMPv3-capable host/report support does not establish IGMPv3 query generation.
 
 ### 2.3 Multicast Address Ranges
 
 | Range                     | Purpose                                      |
 |---------------------------|----------------------------------------------|
 | 224.0.0.0/24              | Link-local, not forwarded by routers         |
-| 224.0.1.0 – 238.255.255.255 | Globally scoped, routable                 |
+| 224.0.1.0 – 238.255.255.255 | Includes multiple allocation categories, including 232/8 SSM; consult the registry |
 | 239.0.0.0/8               | Administratively scoped, private use         |
 | 240.0.0.0/4               | Reserved                                     |
 
 For intra-VLAN multicast in a private lab or enterprise environment, the
-239.0.0.0/8 range is the correct choice. These addresses are analogous to RFC
-1918 private unicast addresses — they are not routed on the public internet and
-are intended for organizationally scoped use.
+239.0.0.0/8 range is a common ASM choice, subject to the organization's group allocation. These addresses are analogous to RFC
+1918 private unicast addresses — they require administratively enforced scope boundaries; the address alone
+does not create a security or routing boundary.
 
 ---
 
@@ -145,137 +164,61 @@ With IGMP snooping enabled, the switch:
 
 ### 3.2 Default Behavior on IOS-XE
 
-On Catalyst 9200 and 9300, IGMP snooping is enabled globally by default. No
-explicit configuration is required to enable it. However default behavior without
-a querier configured is to flood multicast to all ports in the VLAN, because
-without queries there are no membership reports to snoop on.
-
-Verify global IGMP snooping status:
+IGMP snooping is normally enabled on these Catalyst platforms; inspect effective
+global and per-VLAN state. Without a working querier, initial unsolicited reports
+can create state that later ages out. Subsequent unknown-multicast forwarding
+is platform/configuration-dependent; do not assume guaranteed flooding or loss.
 
 ```
 show ip igmp snooping
-```
-
-Verify per-VLAN IGMP snooping status:
-
-```
 show ip igmp snooping vlan 2601
+show ip igmp snooping groups vlan 2601
 ```
+
+Snooping and querier generation are different features; record each separately.
 
 ### 3.3 Querier Role and Election
 
-The IGMP querier is the device responsible for periodically sending IGMP general
-queries to 224.0.0.1 (all hosts). These queries prompt all multicast receivers
-to respond with membership reports, which the switch intercepts to maintain its
-snooping table.
+A querier periodically solicits host memberships. Normal IGMPv2/v3 router
+querier election favors the lower valid interface address. A switch's snooping
+querier also has platform-specific activation/nonquerier rules; it is not
+interchangeable with a PIM-enabled SVI's IGMP function.
 
-Only one querier is active per VLAN at a time. If multiple devices are sending
-queries, an election occurs based on the lowest source IP address winning. This
-is important to understand because a misconfigured host or an unexpected device
-sending queries can win the election and become the de facto querier, displacing
-the switch.
-
-Querier election rules:
-
-```
-Lowest source IP address wins the election.
-
-0.0.0.0  <  any real IP address
-
-A switch configured with ip igmp snooping querier but no source address
-specified will query from 0.0.0.0 and will lose to any host with a real IP.
-```
+Do not claim a `0.0.0.0` source always wins or loses. Inspect operational state
+and captured queries. Cisco documents source fallback and no-query behavior
+when no address is available (C1).
 
 ### 3.4 Querier Source Address Selection
 
-The querier source address should be a real, stable IP address associated with
-the switch and reachable within the management plane. The recommended source is
-an existing SVI that is active on the switch — not a loopback address and not
-0.0.0.0.
+Select a stable address under the deployed platform's documented rules. The
+management-SVI addresses below are lab examples, not universal requirements.
+IGMP replies are multicast; an L2 unicast path back to the query source is not
+by itself the membership criterion.
 
-Rationale for not using a loopback address:
-
-- A loopback is not associated with any VLAN
-- Hosts receiving queries from a loopback source have no Layer 2 path back to
-  that address since there is no SVI bridging the loopback into the VLAN
-- Some multicast-aware stacks validate querier reachability and may behave
-  unexpectedly when the querier source is unreachable at L2
-- On switches without ip multicast-routing, loopback-sourced queriers may not
-  be supported consistently
-
-Recommended approach — use an existing management SVI as the source:
+Example global syntax; confirm release-specific CLI before applying:
 
 ```
 ip igmp snooping querier
-ip igmp snooping vlan 2601 querier address 10.32.204.254
+ip igmp snooping querier address 10.32.204.254
 ```
 
-This uses a real, stable address without requiring new SVIs on data VLANs.
+Per-VLAN overrides, operational source selection, and interaction with a routed
+querier must be verified for the exact image. Use `show ip igmp snooping querier`
+and a wire capture; configuring an address alone does not prove querying.
 
 ### 3.5 Theoretical Scenarios
 
-The following scenarios describe what happens under different querier conditions.
-These are provided to aid understanding and troubleshooting.
+| Situation | Investigate / expected boundary |
+|---|---|
+| No querier | Initial reports may be learned and later age out; inspect unknown-group policy |
+| Host runs a routing/querier service | May introduce a querier; a plain multicast join or smcroute membership entry alone does not imply query generation |
+| Zero or unexpected query source | Inspect source selection and operational state; no numeric-address shortcut |
+| Global multicast routing enabled | Inspect L2 snooping and per-VLAN routed state separately; no general rule that PIM takes over unrelated L2 forwarding |
+| Source-specific feed | Verify actual membership protocol capabilities, source lists and routed source/group setup |
 
-**Scenario A — No querier anywhere, IGMP snooping enabled**
-
-```
-Result: Switch floods multicast to all ports in the VLAN.
-
-Hosts may send unsolicited IGMP reports when joining groups. Snooping will
-catch these initial joins and briefly populate the table. When memberships
-time out and no queries arrive to refresh them, the table ages out and the
-switch falls back to flooding.
-
-Multicast is delivered but to every port in the VLAN, not just subscribers.
-For a VLAN with few ports and controlled applications this may be acceptable.
-```
-
-**Scenario B — A host acts as querier**
-
-```
-Result: Multicast works correctly if the host sends compliant IGMP queries.
-
-Some multicast applications and Linux stacks with smcroute or pimd running
-will send IGMP queries if they detect no querier. The switch snoops those
-host-generated queries exactly as it would switch-generated ones. The host
-with the lowest IP address in the VLAN wins the querier election.
-
-This is not a reliable production design but explains why multicast may
-appear to work even without an explicit querier configured on the switch.
-```
-
-**Scenario C — Switch querier sourcing from 0.0.0.0**
-
-```
-Result: Works correctly only if no host on the VLAN has a lower IP address
-and is also sending queries (which no real IP can be lower than 0.0.0.0).
-
-In practice 0.0.0.0 always wins the election since it is numerically lower
-than any valid IP. However using 0.0.0.0 is technically non-compliant and
-some hosts may reject or ignore queries from this source. Specifying a real
-SVI address is always preferred.
-```
-
-**Scenario D — ip multicast-routing enabled, no PIM on L2 VLAN SVIs**
-
-```
-Result: Unpredictable. Multicast frames for those VLANs may be dropped.
-
-When ip multicast-routing is enabled globally, IOS-XE hands multicast
-forwarding decisions to the PIM subsystem even for VLANs where only L2
-forwarding is needed. If no SVI exists for a VLAN, PIM has no interface
-to process membership for that group. The result is that IGMP snooping
-table entries may not be populated correctly and multicast may be silently
-dropped rather than flooded.
-
-Fix: Add an IGMP snooping querier per affected VLAN sourced from an
-existing SVI. This keeps ip multicast-routing in place and gives IGMP
-snooping the information it needs to operate independently of PIM for
-those VLANs.
-```
-
----
+A switch that recognizes IGMPv3 reports may still generate only IGMPv1/v2
+snooping queries. C1 documents that distinction for Catalyst 9300 17.15.x.
+Verify target images before claiming a source-specific deployment is supported.
 
 ## 4. Layer 2 Only Switch — Access Layer (SWITCH02 Style)
 
@@ -290,57 +233,26 @@ A pure access layer switch in this design has the following properties:
 - Access ports connecting physical client devices
 - One trunk uplink to the aggregation switch
 
-Because ip multicast-routing is absent, IGMP snooping operates in its native
-standalone mode. This is the simpler and more predictable of the two switch
-roles for multicast configuration.
+This role needs L2 distribution; routed multicast state is not a prerequisite.
+Verify actual snooping and query ownership separately.
 
 ### 4.2 Recommended Configuration
 
-Enable IGMP snooping querier globally and per VLAN, sourced from the management
-SVI. No PIM configuration is needed or appropriate on this switch.
+For an L2-only VLAN, confirm whether an upstream querier already exists. Add a
+snooping querier only where the network design requires one; no PIM is needed
+merely to switch intra-VLAN traffic.
 
-Global querier enable:
+Lab example (global source affects the switch's querier policy):
 
 ```
 ip igmp snooping querier
+ip igmp snooping querier address 10.32.204.253
 ```
 
-Per-VLAN querier configuration (repeat for each active data VLAN):
-
-```
-ip igmp snooping vlan 2601 querier address 10.32.204.253
-ip igmp snooping vlan 2602 querier address 10.32.204.253
-ip igmp snooping vlan 2603 querier address 10.32.204.253
-ip igmp snooping vlan 2604 querier address 10.32.204.253
-ip igmp snooping vlan 2605 querier address 10.32.204.253
-ip igmp snooping vlan 2606 querier address 10.32.204.253
-ip igmp snooping vlan 2607 querier address 10.32.204.253
-ip igmp snooping vlan 2608 querier address 10.32.204.253
-ip igmp snooping vlan 2609 querier address 10.32.204.253
-ip igmp snooping vlan 2610 querier address 10.32.204.253
-ip igmp snooping vlan 2611 querier address 10.32.204.253
-ip igmp snooping vlan 2612 querier address 10.32.204.253
-ip igmp snooping vlan 2613 querier address 10.32.204.253
-ip igmp snooping vlan 2614 querier address 10.32.204.253
-ip igmp snooping vlan 2615 querier address 10.32.204.253
-ip igmp snooping vlan 2616 querier address 10.32.204.253
-ip igmp snooping vlan 2617 querier address 10.32.204.253
-ip igmp snooping vlan 2618 querier address 10.32.204.253
-ip igmp snooping vlan 2619 querier address 10.32.204.253
-ip igmp snooping vlan 2620 querier address 10.32.204.253
-ip igmp snooping vlan 2621 querier address 10.32.204.253
-ip igmp snooping vlan 2622 querier address 10.32.204.253
-ip igmp snooping vlan 2623 querier address 10.32.204.253
-ip igmp snooping vlan 2624 querier address 10.32.204.253
-```
-
-Management SVI (already present, shown for reference):
-
-```
-interface Vlan3224
- description ADMIN
- ip address 10.32.204.253 255.255.255.0
-```
+Verify VLAN 2601 operational state before repeating changes elsewhere. Preserve
+existing management addressing; do not create data SVIs or broad per-VLAN
+configuration simply to copy this example. Release-specific overrides need
+on-device syntax/behavior validation.
 
 ### 4.3 Verification Commands
 
@@ -386,99 +298,31 @@ The aggregation switch in this design has the following properties:
 
 ### 5.2 Impact of ip multicast-routing on L2 VLANs
 
-When `ip multicast-routing` is enabled globally on IOS-XE, the switch hands
-multicast forwarding decisions to the PIM subsystem. For VLANs that have an SVI
-with PIM configured, this works as expected. For VLANs that have no SVI and no
-PIM interface, the behavior changes in a way that is not immediately obvious.
+Multicast routing controls routed forwarding; IGMP snooping controls L2 port
+distribution. Global routing enablement alone does not establish that unrelated
+L2 VLANs require PIM or lose multicast traffic.
 
-The issue:
-
-```
-ip multicast-routing is enabled globally
-  ↓
-PIM subsystem takes over multicast forwarding decisions
-  ↓
-VLAN 2601 has no SVI, therefore no PIM interface
-  ↓
-PIM has no membership state for VLAN 2601 groups
-  ↓
-Multicast frames for VLAN 2601 may be dropped silently
-  ↓
-IGMP snooping table entries may not be populated correctly
-```
-
-This is distinct from the access layer switch case where IGMP snooping operates
-standalone without interference from PIM.
-
-Two remediation options exist:
-
-**Option A — Add IGMP snooping querier per L2 VLAN (Recommended)**
-
-Keeps ip multicast-routing in place. Surgical change with low risk. The querier
-gives IGMP snooping the information it needs to operate independently for L2
-VLANs without requiring PIM on those VLANs.
-
-**Option B — Remove ip multicast-routing**
-
-Returns IGMP snooping to standalone mode. Appropriate if no routed multicast is
-needed anywhere on the switch. Higher risk if other parts of the environment
-depend on ip multicast-routing being present.
+Inspect per-VLAN memberships, router ports, queries and actual data. Attribute
+an unexpected interaction to a specific image/configuration or documented
+defect before changing global routing. Do not remove `ip multicast-routing`
+as a generic fix; other VLANs may depend on it.
 
 ### 5.3 Recommended Configuration
 
-Using Option A. Sourced from the existing Vlan3224 SVI (10.32.204.254).
+Determine the query owner per VLAN. A PIM-enabled SVI's IGMP querying and a
+standalone snooping querier have different roles. Cisco documents the snooping
+querier becoming inactive when PIM is enabled on the corresponding SVI (C1).
 
-Global querier enable:
+For L2-only VLANs needing this switch to query, use the release-supported
+snooping-querier configuration, then verify operational state. Example:
 
 ```
 ip igmp snooping querier
+ip igmp snooping querier address 10.32.204.254
 ```
 
-Per-VLAN querier configuration for all L2 data VLANs:
-
-```
-ip igmp snooping vlan 100 querier address 10.32.204.254
-ip igmp snooping vlan 101 querier address 10.32.204.254
-ip igmp snooping vlan 102 querier address 10.32.204.254
-ip igmp snooping vlan 110 querier address 10.32.204.254
-ip igmp snooping vlan 111 querier address 10.32.204.254
-ip igmp snooping vlan 470 querier address 10.32.204.254
-ip igmp snooping vlan 472 querier address 10.32.204.254
-ip igmp snooping vlan 1000 querier address 10.32.204.254
-ip igmp snooping vlan 2000 querier address 10.32.204.254
-ip igmp snooping vlan 2601 querier address 10.32.204.254
-ip igmp snooping vlan 2602 querier address 10.32.204.254
-ip igmp snooping vlan 2603 querier address 10.32.204.254
-ip igmp snooping vlan 2604 querier address 10.32.204.254
-ip igmp snooping vlan 2605 querier address 10.32.204.254
-ip igmp snooping vlan 2606 querier address 10.32.204.254
-ip igmp snooping vlan 2607 querier address 10.32.204.254
-ip igmp snooping vlan 2608 querier address 10.32.204.254
-ip igmp snooping vlan 2609 querier address 10.32.204.254
-ip igmp snooping vlan 2610 querier address 10.32.204.254
-ip igmp snooping vlan 2611 querier address 10.32.204.254
-ip igmp snooping vlan 2612 querier address 10.32.204.254
-ip igmp snooping vlan 2613 querier address 10.32.204.254
-ip igmp snooping vlan 2614 querier address 10.32.204.254
-ip igmp snooping vlan 2615 querier address 10.32.204.254
-ip igmp snooping vlan 2616 querier address 10.32.204.254
-ip igmp snooping vlan 2617 querier address 10.32.204.254
-ip igmp snooping vlan 2618 querier address 10.32.204.254
-ip igmp snooping vlan 2619 querier address 10.32.204.254
-ip igmp snooping vlan 2620 querier address 10.32.204.254
-ip igmp snooping vlan 2621 querier address 10.32.204.254
-ip igmp snooping vlan 2622 querier address 10.32.204.254
-ip igmp snooping vlan 2623 querier address 10.32.204.254
-ip igmp snooping vlan 2624 querier address 10.32.204.254
-```
-
-Existing Vlan3224 SVI (already present, shown for reference):
-
-```
-interface Vlan3224
- description ADMIN
- ip address 10.32.204.254 255.255.255.0
-```
+Retain routed multicast on VLANs requiring it. Avoid bulk configuration across
+all lab VLAN IDs before verifying query ownership, address selection and traffic.
 
 ### 5.4 Verification Commands
 
@@ -524,110 +368,49 @@ show ip igmp groups
 
 ### 6.1 TCN-Triggered Multicast Table Flushing
 
-When a Topology Change Notification (TCN) occurs in a spanning tree domain, the
-switch flushes its MAC address table to prevent stale forwarding entries. On
-IOS-XE, this flush also clears the IGMP snooping group membership table for the
-affected VLANs.
+A spanning-tree topology change can alter multicast distribution and temporary
+flooding. Do not equate MAC-table changes with universal IGMP-table deletion or
+assume every application must leave/rejoin.
 
-The sequence of events:
-
-```
-Link flap or topology change occurs
-  ↓
-STP generates a TCN
-  ↓
-Switch flushes MAC address table for affected VLANs
-  ↓
-IGMP snooping group membership table is also flushed
-  ↓
-Switch falls back to flooding multicast to all ports
-  ↓
-Hosts must re-send IGMP joins to rebuild membership state
-  ↓
-Multicast delivery is temporarily disrupted until membership is restored
-```
-
-The duration of disruption depends on how quickly hosts re-join their groups.
-Applications that rejoin immediately upon detecting stream loss recover quickly.
-Applications that rely on periodic IGMP reports may take up to the report
-interval (default 125 seconds for IGMPv2/v3) to recover.
-
-Mitigation: Ensure rapid-PVST is configured and all access ports have PortFast
-enabled so TCNs are not generated by end device link events. See section 6.2.
-
-Verify TCN events:
+For Catalyst 9300, C1 documents different STP edge/non-edge flooding behavior
+from IOS XE 17.11.1. Test the deployed release and configured TCN flood/query
+settings instead of promising a fixed recovery time.
 
 ```
 show spanning-tree vlan 2601 detail | include topology
+show ip igmp snooping vlan 2601
+show ip igmp snooping groups vlan 2601
 ```
+
+Compare before/after membership and captures. A 125-second query interval is
+not a universal outage duration.
 
 ### 6.2 PortFast Interaction
 
-PortFast is a spanning tree feature that causes an access port to transition
-directly to the forwarding state when a link comes up, bypassing the listening
-and learning states. This has a direct and important relationship with multicast.
+PortFast/edge configuration is for ports connected only to end systems. Apply
+it according to actual topology, not because the traffic happens to be multicast.
+Do not enable edge behavior on a switch-to-switch connection. A host trunk may
+need platform-specific edge-trunk treatment after validating that it cannot
+form a bridge loop.
 
-Without PortFast on an access port:
-
-```
-Device connects to port
-  ↓
-Port enters listening state (15 seconds)
-  ↓
-Port enters learning state (15 seconds)
-  ↓
-Port enters forwarding state
-  ↓
-Total delay: 30 seconds before traffic flows
-  ↓
-During this time the switch generates TCNs, flushing multicast tables
-```
-
-With PortFast on an access port:
-
-```
-Device connects to port
-  ↓
-Port immediately enters forwarding state
-  ↓
-No TCN is generated
-  ↓
-Multicast snooping tables are not flushed
-```
-
-PortFast should be enabled on all access ports connected to end devices
-(physical clients, servers, VM uplinks that are access ports). It must not be
-enabled on trunk ports between switches.
-
-Configuration per access port:
+Example end-device access port:
 
 ```
 interface GigabitEthernet1/0/1
  spanning-tree portfast
 ```
 
-Global default for all access ports (use with caution on aggregation switches):
-
-```
-spanning-tree portfast default
-```
-
-Note: On the access layer switch (SWITCH02 style), enabling PortFast globally
-is appropriate since all non-trunk ports connect to end devices. On the
-aggregation switch (SWITCH01 style), configure PortFast explicitly per port
-rather than globally to avoid accidentally enabling it on trunk interfaces.
+Convergence depends on STP mode, port role and policy; do not assume every
+non-PortFast port incurs a fixed 30-second delay.
 
 ### 6.3 BPDU Guard Interaction
 
-BPDU Guard is a security feature that disables a PortFast-enabled port if it
-receives a BPDU. Its relationship with multicast is indirect but important.
+BPDU Guard can error-disable an edge port receiving BPDUs. Diagnose the source
+and topology before restoring it. Automatic error-disable recovery is an
+operator policy, not a mandatory multicast setting; repeated recovery can
+reintroduce the same fault.
 
-If a PortFast port receives a BPDU (from a rogue switch or a misconfigured VM
-sending BPDUs), BPDU Guard error-disables the port. The port going down and
-then recovering (after errdisable recovery) generates a TCN, which flushes
-multicast tables as described in section 6.1.
-
-BPDU Guard should always be paired with PortFast on end device ports:
+Example for a verified end-device edge port:
 
 ```
 interface GigabitEthernet1/0/1
@@ -635,25 +418,14 @@ interface GigabitEthernet1/0/1
  spanning-tree bpduguard enable
 ```
 
-Ensure errdisable recovery is configured so that a transient BPDU event does
-not permanently disable the port:
-
-```
-errdisable recovery cause bpduguard
-errdisable recovery interval 60
-```
-
-Verify error-disabled ports:
+Inspect state before deciding on recovery:
 
 ```
 show interfaces status err-disabled
-```
-
-Verify BPDU Guard status:
-
-```
 show spanning-tree summary
 ```
+
+Do not infer a specific multicast-table flush from every guard event.
 
 ### 6.4 Recommended Spanning Tree Settings for Multicast Ports
 
@@ -713,8 +485,8 @@ incorrectly populate its snooping table.
 
 The critical requirement: every switch that carries the RSPAN VLAN in its
 trunk allowed list must have the VLAN defined as remote-span in its VLAN
-database. Without this, the switch treats RSPAN traffic as normal Layer 2
-traffic and multicast snooping state can be corrupted.
+database. Without correct provisioning, monitoring traffic may follow unintended L2
+behavior; inspect actual membership/forwarding before attributing a defect.
 
 Required on every switch carrying the RSPAN VLAN:
 
@@ -776,8 +548,8 @@ subscriber in VLAN 2616.
 To prevent RSPAN from interfering with multicast outside its intended scope:
 
 1. Ensure all switches carrying VLAN 50 have `vlan 50 remote-span` defined.
-   Missing this on any intermediate switch causes RSPAN frames to be processed
-   as normal L2 traffic and corrupts multicast snooping state.
+   An incorrectly provisioned monitoring VLAN can change forwarding behavior;
+   verify observed effects rather than asserting inevitable snooping corruption.
 
 2. Limit the RSPAN VLAN to only the trunk segments that need it. If CORE1234
    and CORE5678 have no RSPAN destination, remove VLAN 50 from the trunk
@@ -794,8 +566,8 @@ To prevent RSPAN from interfering with multicast outside its intended scope:
    unexpectedly.
 
 4. Monitor RSPAN VLAN bandwidth utilization. On a busy source port, the
-   mirror copy doubles the traffic on the RSPAN VLAN across all trunk segments
-   that carry it. This can impact trunk utilization between switches.
+   mirror copy adds traffic on the carried monitoring path; utilization depends
+   on selected sources, directions, replication and oversubscription. This can impact trunk utilization between switches.
 
 ---
 
@@ -803,148 +575,56 @@ To prevent RSPAN from interfering with multicast outside its intended scope:
 
 ### 8.1 Multicast Not Reaching Receivers
 
-Symptom: Sender is transmitting, receiver is not receiving anything.
+| Inspect | Evidence / next step |
+|---|---|
+| `show ip igmp snooping vlan 2601` | Effective VLAN policy |
+| `show ip igmp snooping groups vlan 2601` | Expected destination port/group; absence needs join/source/VLAN investigation |
+| `show ip igmp snooping querier detail` | Actual query owner/source/version; compare wire capture |
+| `show ip igmp snooping mrouter vlan 2601` | Expected upstream router ports where applicable |
+| `show ip mroute` | Relevant only when the flow crosses a routed boundary; empty state does not diagnose intra-VLAN switching |
 
-Step 1 — Verify IGMP snooping is enabled:
-
-```
-show ip igmp snooping
-```
-
-Step 2 — Verify the receiver port appears in the group membership table:
-
-```
-show ip igmp snooping groups vlan 2601
-```
-
-If the receiver port is not listed, the switch has not seen an IGMP join from
-that port. Check that the receiver application has joined the group and that
-the host OS is sending IGMP reports.
-
-Step 3 — Verify a querier is active:
-
-```
-show ip igmp snooping querier detail
-```
-
-If no querier is shown, IGMP snooping has no queries to work from and will
-not maintain membership state. Add a querier per section 4.2 or 5.3.
-
-Step 4 — Verify multicast is not being blocked by ip multicast-routing:
-
-```
-show ip mroute
-```
-
-If the group appears here with no outgoing interfaces, PIM is not forwarding
-it. This indicates the Scenario D condition from section 3.5. Add per-VLAN
-IGMP snooping querier configuration as in section 5.3.
-
-Step 5 — Capture at the port level:
-
-```
-monitor session 1 source interface Gi1/0/1 rx
-monitor session 1 destination interface Gi1/0/2
-```
-
-Capture on the destination port using a device running tcpdump or Wireshark
-to verify whether multicast frames are physically arriving at the switch port.
+Trace source and destination ports and confirm VLAN/trunk policy. Create a
+SPAN session only after checking existing monitoring configuration; it changes
+switch state and can consume monitoring bandwidth. A capture at one point does
+not prove application delivery.
 
 ### 8.2 Multicast Flooding to All Ports
 
-Symptom: Multicast traffic is being delivered to all ports in the VLAN, not
-just subscribed receivers. Causes unnecessary load on unsubscribed devices.
-
-Step 1 — Verify IGMP snooping is enabled for the specific VLAN:
+Check whether traffic is a known group, an unknown group, router-port traffic,
+link-local control multicast or an intentional mirror. Inspect query/membership
+state and effective unknown-group/TCN behavior before treating flooding as a fault.
 
 ```
 show ip igmp snooping vlan 2601
+show ip igmp snooping groups vlan 2601
+show spanning-tree vlan 2601 detail
 ```
 
-If snooping shows disabled for that VLAN, enable it:
-
-```
-ip igmp snooping vlan 2601
-```
-
-Step 2 — Verify a querier is present and active:
-
-```
-show ip igmp snooping querier vlan 2601 detail
-```
-
-Step 3 — Verify the multicast group is not in the well-known range. Groups in
-224.0.0.0/24 are link-local and are always flooded by design. This is expected
-behavior, not a misconfiguration. Groups in 239.x.x.x should be snooped
-correctly once a querier is active.
-
-Step 4 — Check for TCN events causing table flushes:
-
-```
-show spanning-tree vlan 2601 detail | include topology
-```
-
-Repeated TCNs will repeatedly flush the snooping table causing repeated
-flooding events. Resolve the underlying topology instability and ensure
-PortFast is configured on all access ports.
+PortFast is a topology decision for eligible edge ports, not a universal fix for
+flooding. Capture a bounded sample and record the release/settings.
 
 ### 8.3 Querier Election Conflicts
 
-Symptom: Multicast works intermittently. The show ip igmp snooping querier
-detail output shows a querier IP that is not the switch.
-
-This means a host on the VLAN is winning the querier election. If the winning
-host IP is lower than the switch querier source, the host becomes the querier.
-
-Step 1 — Identify the winning querier:
-
-```
-show ip igmp snooping querier vlan 2601 detail
-```
-
-Note the querier IP address and identify which device it belongs to.
-
-Step 2 — Determine whether the host querier is intentional. If not, investigate
-why the host is sending IGMP queries. Linux hosts running smcroute or pimd may
-send queries by default. Windows hosts generally do not send queries unless a
-specific multicast application is configured to do so.
-
-Step 3 — If the host querier is reliable and correct, this can be left in place.
-If it is unreliable, either configure the switch querier with a lower IP than
-the host, or disable the querier function on the host application.
+Inspect operational querier state and captured query source/version on each
+VLAN. Identify any unexpected routing/querier service. Do not assume a numeric
+comparison involving `0.0.0.0` predicts the outcome. Configure query ownership
+through the actual platform's documented rules, then verify convergence.
 
 ### 8.4 Multicast Disrupted After Topology Change
 
-Symptom: Multicast stops working briefly after a link flap, switch reload, or
-spanning tree reconvergence. Recovery is automatic but takes 30–120 seconds.
-
-This is the TCN flush behavior described in section 6.1.
-
-Step 1 — Identify which port caused the TCN:
+Record the STP event, affected VLAN/ports, memberships and query traffic before
+and after the change. Check edge/non-edge role and release-specific TCN flooding
+behavior. Avoid forcing application rejoins or changing STP globally until the
+last confirmed distribution point is known.
 
 ```
-show spanning-tree vlan 2601 detail | include from
+show spanning-tree vlan 2601 detail
+show ip igmp snooping groups vlan 2601
+show ip igmp snooping querier detail
 ```
 
-Step 2 — Verify PortFast is configured on all access ports for the affected VLAN:
-
-```
-show spanning-tree interface GigabitEthernet1/0/1 portfast
-```
-
-Step 3 — If PortFast is already configured and TCNs are still occurring, the
-source of the TCN is likely a trunk port. Check trunk port stability:
-
-```
-show interfaces GigabitEthernet1/0/24 | include line protocol
-```
-
-Step 4 — To reduce recovery time after a TCN flush, ensure hosts and VMs are
-configured to send immediate IGMP joins when their multicast application starts
-or detects stream loss. This is application-specific but reduces the recovery
-window from the full report interval to near-instantaneous.
-
----
+Test the exact target software in the lab; no universal table-flush/recovery
+interval is asserted.
 
 ## 9. Glossary
 
@@ -970,3 +650,64 @@ window from the full report interval to near-instantaneous.
 | TCN               | Topology Change Notification. STP message indicating a topology change.    |
 | Trunk             | Switch port carrying multiple VLANs using 802.1Q tagging.                  |
 | VLAN              | Virtual Local Area Network. Logical network segment within a switch.       |
+
+## Appendix A — Acronyms and meanings
+
+Literal command/API identifiers, interface names and lab device names are not
+acronyms. Product names (such as IOS XE, ESXi and VirtIO) identify platforms;
+use the vendor documentation for their release-specific behavior.
+
+| Term | Meaning |
+|---|---|
+| ARP | Address Resolution Protocol |
+| ASM | Any-Source Multicast |
+| BPDU | Bridge Protocol Data Unit |
+| CLI | Command-Line Interface |
+| IGMP | Internet Group Management Protocol |
+| IP | Internet Protocol |
+| IPv4 | Internet Protocol version 4 |
+| IPv6 | Internet Protocol version 6 (outside this guide's configuration coverage) |
+| L2 | Layer 2 — link-layer switching |
+| L3 | Layer 3 — network-layer routing |
+| LACP | Link Aggregation Control Protocol |
+| MAC | Media Access Control |
+| MLD | Multicast Listener Discovery (outside this guide's configuration coverage) |
+| NIC | Network Interface Card |
+| PIM | Protocol Independent Multicast |
+| PVST | Per-VLAN Spanning Tree |
+| RFC | Request for Comments |
+| RP | Rendezvous Point |
+| RSPAN | Remote Switched Port Analyzer |
+| SPAN | Switched Port Analyzer |
+| SSM | Source-Specific Multicast |
+| STP | Spanning Tree Protocol |
+| SVI | Switch Virtual Interface |
+| TCN | Topology Change Notification |
+| VLAN | Virtual Local Area Network |
+| VM | Virtual Machine |
+| IEEE | Institute of Electrical and Electronics Engineers |
+
+## Appendix B — Verification sources
+
+Accessed/reviewed 2026-10-17. These primary sources support the corrected
+mechanisms, not a claim that every command or platform was tested. Configuration
+choices and example topology are project guidance. No hardware/VM lab validation
+was performed during this revision. Pin tool versions and verify installed help,
+service units, policy and vendor release notes before deployment.
+
+| ID | Primary source | Verification scope |
+|---|---|---|
+| C1 | [Catalyst 9300 IOS XE 17.15.x multicast configuration guide](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/17-15/configuration_guide/ip_mcast_rtng/b_1715_ip_mcast_rtng_9300_cg.pdf) | Querier role/source/version and TCN behavior; not qualification of every target build |
+| C2 | [Catalyst 9300 IOS XE 17.13.x multicast command reference](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/17-13/command_reference/b_1713_9300_cr/ip_multicast_routing.html) | CLI mechanism cross-check; exact 17.15/17.18 image syntax must be inspected |
+| C3 | [Catalyst 9300 IOS XE 17.12.x IGMP configuration](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/17-12/configuration_guide/ip_mcast_rtng/b_1712_ip_mcast_rtng_9300_cg/configuring_igmp.html) | Earlier documented querier and topology-change behavior; version-specific context |
+| G1 | [RFC 2365 — Administratively Scoped IP Multicast](https://www.rfc-editor.org/rfc/rfc2365.html) | 239/8 scope requires configured administrative boundaries; it is not inherent authentication or isolation |
+
+### Qualification still required
+
+| Evidence | Status |
+|---|---|
+| Exact OS/device/software versions and effective policy | Record and test at the site |
+| Commands/scripts and complete data path | Not executed during this review |
+| Throughput, loss, failover and recovery | Not measured; examples are not guarantees |
+| IPv6/MLD | Explicitly outside this guide |
+| C8570-G2 / Catalyst 9400 and exact 17.18.4 / 17.15.6 builds | Not qualified by this Catalyst 9200/9300 guide |
