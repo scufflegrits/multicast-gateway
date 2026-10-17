@@ -6,6 +6,10 @@
 
 - [1. Executive summary](#1-executive-summary)
 - [2. Layer 1 — Network and host boundaries](#2-layer-1--network-and-host-boundaries)
+  - [Before — multicast to the receiving application](#before--multicast-to-the-receiving-application)
+  - [After — mcgw at Site B](#after--mcgw-at-site-b)
+  - [Detail — mcgw NICs and the shared Site B switch](#detail--mcgw-nics-and-the-shared-site-b-switch)
+  - [General forwarding boundary](#general-forwarding-boundary)
 - [3. Layer 2 — Routes and independent destinations](#3-layer-2--routes-and-independent-destinations)
 - [4. Layer 3 — Datagram outcomes](#4-layer-3--datagram-outcomes)
 - [5. Layer 4 — Lifecycle and recovery](#5-layer-4--lifecycle-and-recovery)
@@ -96,6 +100,117 @@ Separate NICs are illustrated; same-NIC forwarding is also supported.
 
 Color-cell fills require inline HTML styling support; viewers that strip it
 (such as GitHub) retain the names/meanings but may omit the fills.
+
+### Before — multicast to the receiving application
+
+Arrows show the feed direction; physical links support traffic in both directions.
+
+```mermaid
+%%{init: {"theme":"base","layout":"dagre","themeVariables":{"background":"white","primaryTextColor":"darkslategray","lineColor":"dimgray","edgeLabelBackground":"white","clusterBkg":"white","clusterBorder":"silver","titleColor":"darkslategray"},"flowchart":{"htmlLabels":true,"curve":"linear","nodeSpacing":25,"rankSpacing":35}}}%%
+flowchart TB
+    subgraph SITEA["Site A"]
+        A["RHEL_SITEA<br/>Multicast producer"]:::process
+        AS["Cisco 9300"]:::network
+        AR["Cisco router"]:::network
+        A --> AS --> AR
+    end
+    WAN["Commercial WAN"]:::network
+    AR -->|"Multicast UDP"| WAN
+    WAN -->|"Multicast UDP"| BR
+    subgraph SITEB["Site B"]
+        BR["Cisco router"]:::network
+        BS["Cisco 9300"]:::network
+        B["RHEL_SITEB<br/>Multicast consumer"]:::process
+        BR --> BS
+        BS -->|"Multicast UDP"| B
+    end
+    class SITEA,SITEB boundary
+    classDef network fill:whitesmoke,stroke:slategray,color:darkslategray
+    classDef process fill:aliceblue,stroke:steelblue,color:midnightblue
+    classDef success fill:honeydew,stroke:seagreen,color:darkgreen
+    classDef boundary fill:white,stroke:silver,color:darkslategray
+```
+
+### After — mcgw at Site B
+
+This high-level view shows logical delivery. The next diagram expands the
+mcgw-to-receiver connection through the shared switch.
+
+```mermaid
+%%{init: {"theme":"base","layout":"dagre","themeVariables":{"background":"white","primaryTextColor":"darkslategray","lineColor":"dimgray","edgeLabelBackground":"white","clusterBkg":"white","clusterBorder":"silver","titleColor":"darkslategray"},"flowchart":{"htmlLabels":true,"curve":"linear","nodeSpacing":25,"rankSpacing":35}}}%%
+flowchart TB
+    subgraph SITEA["Site A"]
+        A["RHEL_SITEA<br/>Multicast producer"]:::process
+        AS["Cisco 9300"]:::network
+        AR["Cisco router"]:::network
+        A --> AS --> AR
+    end
+    WAN["Commercial WAN"]:::network
+    AR -->|"Multicast UDP"| WAN
+    WAN -->|"Multicast UDP"| BR
+    subgraph SITEB["Site B — logical data flow"]
+        BR["Cisco router"]:::network
+        BS["Cisco 9300"]:::network
+        GW["mcgw<br/>Multicast in / unicast out"]:::process
+        B["RHEL_SITEB<br/>Unicast consumer"]:::process
+        BR --> BS
+        BS -->|"Multicast UDP"| GW
+        GW -->|"Unicast UDP<br/>Unchanged payload"| B
+    end
+    class SITEA,SITEB boundary
+    classDef network fill:whitesmoke,stroke:slategray,color:darkslategray
+    classDef process fill:aliceblue,stroke:steelblue,color:midnightblue
+    classDef success fill:honeydew,stroke:seagreen,color:darkgreen
+    classDef boundary fill:white,stroke:silver,color:darkslategray
+```
+
+| Placement implication | Meaning |
+|---|---|
+| Multicast across the WAN | Both examples require the network to deliver multicast to Site B; mcgw at Site B does not remove that requirement |
+| Receiver configuration | RHEL_SITEB must accept unicast UDP carrying the original application payload |
+| Separate host | mcgw is illustrated on its own Linux host, connected to the Site B switch |
+
+### Detail — mcgw NICs and the shared Site B switch
+
+```mermaid
+%%{init: {"theme":"base","layout":"dagre","themeVariables":{"background":"white","primaryTextColor":"darkslategray","lineColor":"dimgray","edgeLabelBackground":"white","clusterBkg":"white","clusterBorder":"silver","titleColor":"darkslategray"},"flowchart":{"htmlLabels":true,"curve":"linear","nodeSpacing":25,"rankSpacing":35}}}%%
+flowchart TB
+    UP["From Site A through WAN<br/>Multicast UDP"]:::network
+    subgraph SITEB["Site B — shared switch, separate mcgw NICs"]
+        BR["Cisco router"]:::network
+        BS["One Cisco 9300<br/>Shared switch fabric"]:::network
+        subgraph HOST["mcgw host — Debian / RHEL"]
+            IN["Ingress NIC — eth0<br/>Receives multicast"]:::network
+            GW["mcgw<br/>Preserve payload bytes"]:::process
+            OK["Local outbound socket acceptance<br/>Confirmation boundary"]:::success
+            OUT["Egress NIC — eth1<br/>Sends unicast"]:::network
+            IN --> GW --> OK --> OUT
+        end
+        B["RHEL_SITEB NIC<br/>Unicast receiver application"]:::process
+        BR -->|"Multicast UDP"| BS
+        BS -->|"1. Multicast to ingress port"| IN
+        OUT -->|"2. Unicast back into another switch port"| BS
+        BS -->|"3. Unicast to receiver port"| B
+    end
+    UP --> BR
+    class SITEB,HOST boundary
+    classDef network fill:whitesmoke,stroke:slategray,color:darkslategray
+    classDef process fill:aliceblue,stroke:steelblue,color:midnightblue
+    classDef success fill:honeydew,stroke:seagreen,color:darkgreen
+    classDef boundary fill:white,stroke:silver,color:darkslategray
+```
+
+| Detail | Meaning |
+|---|---|
+| Shared switch | Both mcgw NICs and RHEL_SITEB connect to the same Cisco 9300; the unicast leg returns through that switch |
+| Network configuration | Ports, VLANs, addressing and routing must permit the illustrated flows; sharing a switch does not require sharing a VLAN or subnet |
+| NIC count | Two NICs illustrate separate ingress/egress; a single NIC can handle both roles |
+| Confirmation | Socket acceptance is local success; the remaining arrows show the intended delivery path, not proof of receipt |
+
+### General forwarding boundary
+
+The following placement illustrates mcgw before a unicast WAN, an alternative
+to the Site B placement above.
 
 ```mermaid
 %%{init: {"theme":"base","layout":"dagre","themeVariables":{"background":"white","primaryTextColor":"darkslategray","lineColor":"dimgray","edgeLabelBackground":"white","clusterBkg":"white","clusterBorder":"silver","titleColor":"darkslategray"},"flowchart":{"htmlLabels":true,"curve":"linear","nodeSpacing":25,"rankSpacing":35}}}%%
