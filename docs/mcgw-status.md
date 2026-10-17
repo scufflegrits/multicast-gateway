@@ -1,6 +1,6 @@
 # mcgw project status and next steps
 
-**Last updated:** 2026-10-17, after the ten-reviewer prototype review (see `git log`). Read this first
+**Last updated:** 2026-10-17, at commit `856286b` plus this file. Read this first
 when picking the project back up. Update it whenever you stop for more than a day.
 
 ## Where things stand
@@ -14,6 +14,20 @@ when picking the project back up. Update it whenever you stop for more than a da
 | Open decisions added | OD-18 (daemon Go toolchain/version policy) |
 | First code | Namespace test environment, `mcsend`/`mcrecv` tools and the OD-09 isolation prototype. Reviewed twice (the second time by ten parallel reviewers) and hardened: readiness markers, positive controls, kernel-semantics predictions with expected-leak negative controls, T-MCI-05b overlapping membership, OD-17 unicast/broadcast/local-origin checks, VALID/REVIEW/INVALID outcomes. Go, harness and loopback regression checks pass. **Privileged namespace experiment not yet run**: needs a separate lab machine. Lessons for future prototypes: [prototypes/lessonslearned.md](../prototypes/lessonslearned.md) |
 | Feature backlog | [FI-01](mcgw-feature-ideas.md#fi-01) read-only browser status page (Candidate, after OD-15) |
+
+## Recent history (2026-10-17)
+
+| Commits | What happened |
+|---|---|
+| `a287938`–`8768357`, `50c17ab` | All `temp2.md` review findings F01–F22 fixed in the reference guides, architecture, runbook and doc checker; dispositions recorded; three leftover Debian passages reconciled |
+| `e57d25d`, `134e2fe`, `ba6e299`, `adb2817`, `7ded6da` | Feature-ideas backlog; test plan with 47 cases; gaps G1–G7 resolved; OD-16 and OD-17 decided |
+| `1c5ad0e`–`716589e` | First code: namespace environment, test tools, OD-09 prototype; lint fixes; Go version table and OD-18 |
+| `df0ae50` | First prototype hardening (five findings) |
+| `856286b` | Ten-reviewer review applied: predictions and negative controls, VALID/REVIEW/INVALID outcomes, real OD-17 test, T-MCI-05b, IGMP evidence fix, harness and Go fixes, new tests, [lessons learned](../prototypes/lessonslearned.md) |
+
+Not yet verified anywhere: everything that needs root (namespace creation,
+the prototype run, SELinux behavior on RHEL, whether a loopback capture counts
+packets once or twice). The first lab run is the first real test.
 
 ## Next step: run the OD-09 prototype on the test machines
 
@@ -99,12 +113,15 @@ Bring the output back and ask for the scripts or predictions to be corrected.
 
 | Item | Detail |
 |---|---|
-| Go | Debian's Go 1.24.4 is at `/usr/lib/go/bin` and is not on `PATH`; add `export PATH=/usr/lib/go/bin:$HOME/.local/bin:$PATH` to `~/.bashrc` if wanted |
+| Go | Debian's Go 1.24.4 is at `/usr/lib/go/bin` and is not on `PATH`; add `export PATH=/usr/lib/go/bin:$HOME/.local/bin:$PATH` to `~/.bashrc` if wanted. The Go 1.27.2 toolchain used for this session's checks lived in a temporary Claude scratchpad and is gone; with the system Go, `GOTOOLCHAIN=go1.27.2 go ...` downloads it again |
+| Lint tools | `golangci-lint` 2.14 and `govulncheck` 1.9 are in `~/.local/bin`; `shellcheck` is installed |
 | govulncheck | `~/.local/bin/govulncheck` rebuilt with Go 1.27.2; old binary kept as `govulncheck.go1.26.bak` |
 | Expected govulncheck result | Clean with Go 1.27.2; with Go 1.24.4 it reports GO-2026-4971 (Windows-only, not reachable on Linux) |
-| Checks before committing | `python3 scripts/check-docs.py`; for Go changes also `gofmt -l .`, `go vet ./...`, `golangci-lint run ./...`, `go test -race ./...`; for prototype or tool changes also `python3 prototypes/od09-isolation/test_harness.py`, `python3 test/test_tools.py` and `shellcheck -x -P SCRIPTDIR` on the scripts |
+| Checks before committing | `python3 scripts/check-docs.py` for docs; for code, the full list at the end of [prototypes/lessonslearned.md](../prototypes/lessonslearned.md#checks-before-committing-prototype-or-tool-changes) |
 
 ## Resuming with Claude Code
 
 Start a session in this repository and ask it to read `docs/mcgw-status.md`. If
-results have been pushed from the test machines, `git pull` first.
+results have been pushed from the test machines, `git pull` first. Before any
+prototype, tool or harness change, also read
+[prototypes/lessonslearned.md](../prototypes/lessonslearned.md) and follow its checklist.
