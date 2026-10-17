@@ -77,3 +77,4 @@ status and limitations.
 
 Documentation maintenance: run `python3 scripts/check-docs.py` from the repository
 root to check local links and diagram structure; review rendered diagrams separately.
+After changing the checker, run `python3 scripts/test_check_docs.py`.
