@@ -22,7 +22,7 @@ are tracked in [open decisions](mcgw-open-decisions.md).
 | OS | Debian/RHEL release, kernel, systemd, security policy, network namespace | API/version or permission mismatch |
 | Interfaces | Name/index, addresses, administrative/carrier state, ingress VLAN and egress policy | Wrong join, missing bind address, recreated interface |
 | Routing | Permitted unicast route/source, policy rules, asymmetric return paths | Wrong egress, missing route; interface up does not prove remote reachability |
-| IPv4 reverse-path filtering | Inspect both `net.ipv4.conf.all.rp_filter` and ingress-interface value; effective strictness uses their maximum | Source-validation drops before mcgw even when a capture sees input; do not automatically disable it [S5] |
+| IPv4 reverse-path filtering | Inspect both `net.ipv4.conf.all.rp_filter` and ingress-interface value; the effective mode is the maximum numeric value (0 disabled, 1 strict, 2 loose), so 2 on either is loose even if the other is 1 | Source-validation drops before mcgw even when a capture sees input; do not automatically disable it [S5] |
 | Firewall | Permit intended multicast UDP, necessary IGMP/ICMPv6 membership traffic, outbound UDP, and useful ICMP error feedback | Input loss, membership expiry, PMTU black holes; never assume a universal distro/zone policy |
 | Membership infrastructure | Record querier, snooping, router source/group ranges, and effective IGMP/MLD versions | Join succeeds locally but network distribution fails or ages out |
 | Source-specific membership | Verify IGMPv3 for IPv4 / MLDv2 for IPv6 where source-specific reporting is needed; inspect version-forcing settings and router support | Older compatibility behavior cannot provide equivalent source selection [S16] |

@@ -10,6 +10,8 @@ Packet captures are external diagnostic tools.
 - [Receiver sees no data](#receiver-sees-no-data)
 - [Evidence checklist](#evidence-checklist)
 - [Read-only checks](#read-only-checks)
+- [Retained evidence captures](#retained-evidence-captures)
+- [IPv6 checks](#ipv6-checks)
 - [Joined but no input](#joined-but-no-input)
 - [Other symptoms](#other-symptoms)
 - [Using packet captures](#using-packet-captures)
@@ -158,6 +160,11 @@ curl --max-time 3 -sS http://127.0.0.1:9310/metrics
 
 ### Bounded captures
 
+These are quick presence checks: they show whether matching traffic is visible
+and its endpoints, but keep no payload for later matching. The UDP port filters
+also miss noninitial IPv4 fragments, which carry no UDP header; use the
+retained captures below for large-packet or payload evidence.
+
 ```bash
 sudo timeout 30 tcpdump -ni eth0 -c 100 'udp and dst host 239.1.1.1 and dst port 3000'
 sudo timeout 30 tcpdump -ni eth1 -c 100 'udp and dst host 10.0.20.5 and dst port 3000'
@@ -183,6 +190,70 @@ If `jq` is installed, pipe that output to
 `jq -R 'fromjson? | select(.severity == "error")'` for planned JSON-severity
 filtering. This skips non-JSON records; retain the original output for investigation.
 JSON severity does not currently set native journal priority (OD-08).
+
+## Retained evidence captures
+
+Use these when payloads must be compared later or large packets are involved.
+They write files containing payloads; this is still diagnostic, but handle the
+files as incident data. tcpdump usually drops to its own user before writing
+the file, so make the directory writable by that user (adjust if your build
+differs):
+
+```bash
+sudo install -d -m 0750 -o tcpdump -g tcpdump /var/tmp/mcgw-incident
+sudo timeout 120 tcpdump -ni eth0 -s 0 -c 20000 \
+  -w /var/tmp/mcgw-incident/ingress.pcap 'dst host 239.1.1.1 and ip proto 17'
+sudo timeout 120 tcpdump -ni eth1 -s 0 -c 20000 \
+  -w /var/tmp/mcgw-incident/egress.pcap 'dst host 10.0.20.5 and ip proto 17'
+```
+
+Filtering on destination address and IP protocol 17, rather than UDP port,
+keeps every IPv4 fragment of the datagram. `-s 0` keeps whole packets; `-c`
+and `timeout` bound size and duration. Decode offline; tshark/Wireshark
+reassemble IPv4 fragments by default:
+
+```bash
+tcpdump -nn -X -r /var/tmp/mcgw-incident/ingress.pcap | less
+tshark -r /var/tmp/mcgw-incident/ingress.pcap -Y 'ip.flags.mf == 1 || ip.frag_offset > 0'
+tshark -r /var/tmp/mcgw-incident/ingress.pcap -Y 'udp.dstport == 3000'
+```
+
+| Handling | Practice |
+|---|---|
+| Storage | Check free space first; keep counts and durations bounded |
+| Access | Directory mode 0750; copy files off-host only to approved incident storage |
+| Retention | Delete when the incident closes, per site policy; payloads may contain sensor contents |
+| Fragments | A missing fragment prevents reassembly; compare captures at both ends before concluding |
+
+This is external diagnostic evidence. It does not change mcgw's own
+fragmentation or datagram-size policy.
+
+## IPv6 checks
+
+mcgw supports IPv6; the platform reference guides remain IPv4-only. Example
+values: group `ff15::1:6969` on `eth0`, destination `[2001:db8:20::5]:6969` on
+`eth1`. Replace them and verify behavior on the selected kernel and tool
+versions.
+
+| Check | Command | Expected evidence / next step |
+|---|---|---|
+| Egress route | `ip -6 route get 2001:db8:20::5` | Kernel-selected route/source; link-local destinations also need the interface zone (`fe80::…%eth1`) |
+| Memberships | `ip -6 maddress show dev eth0` | Host membership evidence, not proof of mcgw ownership |
+| MLD membership detail | `cat /proc/net/igmp6` | Compare group/interface with MLD reports on the wire |
+| Source validation | `sudo nft list ruleset` | Linux has no IPv6 `rp_filter` sysctl; look for `fib`-based reverse-path rules instead |
+
+```bash
+sudo timeout 30 tcpdump -ni eth0 -c 100 'ip6 and dst host ff15::1:6969'
+sudo timeout 30 tcpdump -ni eth1 -c 100 'ip6 and dst host 2001:db8:20::5'
+sudo timeout 120 tcpdump -ni eth0 -s 0 -c 20000 \
+  -w /var/tmp/mcgw-incident/ingress6.pcap 'ip6 and dst host ff15::1:6969'
+```
+
+These filter on address only. `ip6 proto 17` and UDP port filters inspect only
+the fixed header's next-header field, so they miss UDP behind extension headers,
+including every IPv6 fragment. Narrow afterwards with a decoder
+(`tshark -Y 'udp.dstport == 6969'`). MLD capture is covered by the broad
+`icmp6` check above.
 
 ## Joined but no input
 
