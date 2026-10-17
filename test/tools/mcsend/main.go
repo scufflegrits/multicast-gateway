@@ -28,6 +28,9 @@ func main() {
 	rate := flag.Int("rate", 100, "datagrams per second")
 	ttl := flag.Int("ttl", 1, "multicast TTL")
 	flag.Parse()
+	if *n < 0 || *size < 0 || *rate <= 0 {
+		fail("-n and -size must be nonnegative; -rate must be positive")
+	}
 
 	dst, err := net.ResolveUDPAddr("udp4", *to)
 	if err != nil || *to == "" {
@@ -93,6 +96,9 @@ func main() {
 		"iface": *iface, "size": *size, "sent": sent, "errors": errs,
 	}); err != nil {
 		fail("write summary: %v", err)
+	}
+	if errs != 0 {
+		os.Exit(1)
 	}
 }
 

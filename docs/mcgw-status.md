@@ -1,6 +1,6 @@
 # mcgw project status and next steps
 
-**Last updated:** 2026-10-17, at commit `716589e` plus this file. Read this first
+**Last updated:** 2026-10-17, following commit `000c34b` and the prototype review fixes. Read this first
 when picking the project back up. Update it whenever you stop for more than a day.
 
 ## Where things stand
@@ -12,7 +12,7 @@ when picking the project back up. Update it whenever you stop for more than a da
 | Test plan | [47 cases](mcgw-test-plan.md) (43 Ready, 4 Draft) plus 13 lab/qualification stubs; contract gaps G1–G7 all resolved |
 | Open decisions resolved this session | OD-16 (test-build-only fault hooks), OD-17 (no static cycle rejection; warn on local sinks at route ports) |
 | Open decisions added | OD-18 (daemon Go toolchain/version policy) |
-| First code | Namespace test environment, `mcsend`/`mcrecv` tools and the OD-09 isolation prototype. Builds and passes gofmt, vet, golangci-lint and govulncheck. **Never run**: it needs root on a separate machine |
+| First code | Namespace test environment, `mcsend`/`mcrecv` tools and the OD-09 isolation prototype. Reviewed and hardened: readiness markers, positive controls, explicit child/summary validation and OD17-UC unicast injection. Unit/harness regressions and loopback process checks pass. **Privileged namespace experiment not yet run**: needs a separate lab machine |
 | Feature backlog | [FI-01](mcgw-feature-ideas.md#fi-01) read-only browser status page (Candidate, after OD-15) |
 
 ## Next step: run the OD-09 prototype on the test machines
@@ -35,7 +35,7 @@ git clone https://github.com/scufflegrits/multicast-gateway.git
 cd multicast-gateway
 test/build.sh
 
-# 4. Run the prototype (about 2 minutes)
+# 4. Run the prototype (about 3 minutes)
 sudo prototypes/od09-isolation/run-mci.sh
 
 # 5. Optional: vulnerability scan with that machine's Go
@@ -58,7 +58,8 @@ Two parts could not be tested before handoff:
 | Symptom | Likely cause | What to capture |
 |---|---|---|
 | `ip link add ... netns` error from `env.sh up` | That iproute2 cannot create veth pairs directly inside namespaces | `ip -V` output and the exact error |
-| Results show "IGMPv3 report seen: 0 of 4" | tcpdump's verbose IGMP text differs from the pattern searched | The `igmp-05-*.txt` files in the raw output directory the script prints |
+| Results mark IGMP evidence MISSING | tcpdump's verbose IGMP text differs from the pattern searched | The `igmp-05-*.txt` files in the raw output directory the script prints |
+| Runner reports INVALID | Child failure, incomplete summary or failed positive control | Raw directory printed by cleanup; sender JSON, receiver stderr and capture stderr |
 | Script hangs | A receiver did not exit | Which case was running; `sudo test/netns/env.sh down` cleans up |
 
 Either way, bring the error output back and ask for the script to be fixed.
@@ -71,7 +72,8 @@ Either way, bring the error output back and ask for the script to be fixed.
 2. Record the outcome in [OD-09](mcgw-open-decisions.md#od-09) "Investigation results"
    and decide OD-09.
 3. Confirm in [OD-17](mcgw-open-decisions.md#od-17) that unicast reaching a
-   wildcard-bound socket is rejected as `wrong_destination` (T-MCI-01, T-MCI-03).
+   wildcard-bound socket is rejected as `wrong_destination` (`OD17-UC` rows and
+   retained unicast captures).
    If not, OD-17 reopens.
 4. Fill in the RHEL 9 and RHEL 10 rows of the
    [Go versions table](../test/README.md#go-versions) and add the evidence to

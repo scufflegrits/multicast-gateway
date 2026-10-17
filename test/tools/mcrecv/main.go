@@ -19,7 +19,11 @@ func main() {
 	listen := flag.String("listen", "", "local ip:port to listen on")
 	duration := flag.Duration("duration", 5*time.Second, "how long to listen")
 	lines := flag.Bool("lines", false, "print one JSON line per datagram")
+	readyFile := flag.String("ready-file", "", "write readiness marker after socket setup")
 	flag.Parse()
+	if *duration <= 0 {
+		fail("-duration must be positive")
+	}
 
 	addr, err := net.ResolveUDPAddr("udp4", *listen)
 	if err != nil || *listen == "" {
@@ -34,6 +38,12 @@ func main() {
 		fail("set read deadline: %v", err)
 	}
 
+	if *readyFile != "" {
+		if err := os.WriteFile(*readyFile, []byte("ready\n"), 0600); err != nil {
+			fail("readiness marker: %v", err)
+		}
+	}
+	termination, complete := "", false
 	enc := json.NewEncoder(os.Stdout)
 	buf := make([]byte, 65536)
 	received, bytes, outOfOrder := 0, 0, 0
@@ -42,7 +52,8 @@ func main() {
 	for {
 		n, src, err := conn.ReadFromUDP(buf)
 		if err != nil {
-			if !errors.Is(err, os.ErrDeadlineExceeded) && !errors.Is(err, net.ErrClosed) {
+			termination, complete = receiveTermination(err)
+			if termination == "read_error" {
 				fmt.Fprintf(os.Stderr, "mcrecv: read: %v\n", err)
 			}
 			break
@@ -63,10 +74,14 @@ func main() {
 		}
 	}
 	if err := enc.Encode(map[string]any{
+		"complete": complete, "termination": termination,
 		"tool": "mcrecv", "listen": addr.String(), "received": received,
 		"bytes": bytes, "out_of_order": outOfOrder, "sources": sources,
 	}); err != nil {
 		fail("write summary: %v", err)
+	}
+	if !complete {
+		os.Exit(1)
 	}
 }
 
@@ -80,4 +95,15 @@ func stopOnSignal(conn *net.UDPConn) {
 func fail(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "mcrecv: "+format+"\n", args...)
 	os.Exit(2)
+}
+
+// Only deadline expiry completes the requested observation window.
+func receiveTermination(err error) (string, bool) {
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return "deadline", true
+	}
+	if errors.Is(err, net.ErrClosed) {
+		return "closed", false
+	}
+	return "read_error", false
 }

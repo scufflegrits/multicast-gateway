@@ -141,3 +141,29 @@ prints; it is not committed.
 | `test/tools/` | `mcsend` (numbered-payload sender) and `mcrecv` (unicast listener) |
 | `test/build.sh` | Builds tools and prototypes into `test/bin/` |
 | `prototypes/` | Throwaway experiments that produce evidence for open decisions; never imported by mcgw |
+
+## Tool and harness completion
+
+Receivers write one summary with `complete` and `termination`. Deadline expiry
+completes the observation window; early closure or an unexpected read error is
+incomplete and exits nonzero. `-ready-file PATH` writes a readiness marker after
+socket setup. Per-datagram output remains optional with `-lines`.
+
+`mcsend` exits nonzero when any datagram submission fails, while retaining its
+`sent` and `errors` summary. Its success means local submission, not receipt.
+
+The OD-09 runner checks individual child exits, validates summaries and positive
+controls, and adds a dedicated OD-17 unicast-injection case. See the
+[prototype guide](../prototypes/od09-isolation/README.md) for evidence rules and
+unprivileged regression commands.
+
+With Python 3 and Go installed, process-level regression checks are available:
+
+```bash
+python3 test/test_tools.py
+```
+
+They build binaries in a temporary directory, open loopback listeners, check
+readiness and early termination, and verify a failed submission using an
+oversized datagram that cannot be transmitted. They do not create namespaces or
+send traffic onto real networks.
