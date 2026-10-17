@@ -884,18 +884,20 @@ Test basic network connectivity to a unicast address on the same VLAN:
 Test-NetConnection -ComputerName 192.168.1.20 -InformationLevel Detailed
 ```
 
-Show the routing table (verify there is a multicast route):
+Show the full IPv4 routing table:
 
 ```powershell
-Get-NetRoute -AddressFamily IPv4 | Where-Object { $_.DestinationPrefix -like "239*" }
+Get-NetRoute -AddressFamily IPv4 | Sort-Object DestinationPrefix
 ```
 
-Windows automatically adds a route for 239.0.0.0/8 when an interface has an
-IP address assigned. If this route is missing, add it manually:
-
-```powershell
-New-NetRoute -DestinationPrefix 239.0.0.0/8 -InterfaceIndex $ifIndex -NextHop 0.0.0.0
-```
+Identify the most specific prefix covering the actual group (for example
+239.1.1.1). It may be a 239/8 route, a broader multicast route such as
+224.0.0.0/4, or the default route; among equally specific routes compare
+effective route plus interface metrics ([4.4](#44-multicast-interface-selection-on-multi-homed-machines)).
+A socket that sets its outgoing multicast interface
+([7.2](#72-sending-multicast-via-powershell)) is not governed by this route
+choice. The absence of a `239*` entry is not by itself a fault. Add a scoped multicast route only as a deliberate choice
+(section 4.4, Mechanism 2, including its removal command).
 
 ### 9.2 Verification Commands — Wireshark and tshark
 
@@ -977,17 +979,21 @@ Get-NetIPAddress -AddressFamily IPv4 | Select InterfaceAlias, IPAddress
 
 Without a source IP, Windows will not send multicast frames.
 
-Step 2 — Verify the multicast route exists:
+Step 2 — Identify the route that applies to the group:
 
 ```powershell
-Get-NetRoute -AddressFamily IPv4 | Where-Object { $_.DestinationPrefix -like "239*" }
+Get-NetRoute -AddressFamily IPv4 | Sort-Object DestinationPrefix
 ```
 
-If missing, add the route:
-
-```powershell
-New-NetRoute -DestinationPrefix 239.0.0.0/8 -InterfaceIndex $ifIndex -NextHop 0.0.0.0
-```
+Identify the most specific prefix covering the actual group (for example
+239.1.1.1). It may be a 239/8 route, a broader multicast route such as
+224.0.0.0/4, or the default route; among equally specific routes compare
+effective route plus interface metrics ([4.4](#44-multicast-interface-selection-on-multi-homed-machines)).
+A socket that sets its outgoing multicast interface
+([7.2](#72-sending-multicast-via-powershell)) is not governed by this route
+choice. The absence of a `239*` entry is not by itself a fault. If the sender does not set its outgoing interface and the
+applicable route selects the wrong interface, prefer fixing the socket (Step 3);
+add a scoped route only deliberately (section 4.4, Mechanism 2).
 
 Step 3 — Verify the application is binding to the correct interface. If the
 Windows VM has multiple NICs, the application may be sending via the wrong one.
@@ -1261,6 +1267,7 @@ service units, policy and vendor release notes before deployment.
 | W6 | [Wireshark tshark manual](https://www.wireshark.org/docs/man-pages/tshark.html) | Capture selection, filters and bounds |
 | W7 | [Linux bridge documentation](https://www.kernel.org/doc/html/latest/networking/bridge.html) | Underlying Proxmox bridge membership/snooping concepts |
 | W8 | [Linux IPv4 socket manual](https://man7.org/linux/man-pages/man7/ip.7.html) | Linux comparison: socket joins versus administrative/daemon-held membership |
+| W9 | [Microsoft route command](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/route_ws2008/) | Broad multicast route example; inspect installed routes rather than assume an automatic 239/8 entry |
 | G1 | [RFC 2365 — Administratively Scoped IP Multicast](https://www.rfc-editor.org/rfc/rfc2365.html) | 239/8 scope requires configured administrative boundaries; it is not inherent authentication or isolation |
 
 ### Qualification still required

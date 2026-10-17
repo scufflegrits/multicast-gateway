@@ -571,30 +571,52 @@ the guest VM correctly configured, the host's bond999 and vmbr999 can
 inadvertently block or mangle multicast frames. The following checks verify
 the host is transparent to multicast.
 
-**Verify bridge-mcsnooping is disabled:**
+**Verify the bridge snooping state matches the selected policy:**
 
 ```
 cat /sys/class/net/vmbr999/bridge/multicast_snooping
 ```
 
-Expected: the chosen snooping policy (0 for deliberate flooding; 1 for working snooping), not a universal required value.. If `1`, the bridge is performing its own IGMP snooping without
-a querier and will eventually stop delivering multicast to VM tap interfaces.
-
-Fix:
+Expected: the chosen snooping policy (0 for deliberate flooding; 1 for working
+snooping), not a universal required value. A value of `1` does not by itself
+show that a querier is missing or that delivery will fail. With snooping
+enabled, confirm that queries arrive on the VLAN, that VM tap ports appear in
+the bridge multicast database (MDB), that the uplink is learned as a router
+port, and that the tap and bond carry the expected VLAN:
 
 ```
-# Edit /etc/network/interfaces and add bridge-mcsnooping 0 to vmbr999 stanza
+sudo tcpdump -i bond999 -nn -e -c 20 igmp
+bridge -d mdb show dev vmbr999
+bridge vlan show
+```
+
+If queries are absent or memberships are not learned, correct the querier or
+VLAN path (see [2.1](#21-linux-bridge-and-multicast)). Disabling snooping is
+the deliberate-flooding alternative described in
+[2.2](#22-bridge-mcsnooping-behavior), not a repair for a missing querier. To
+select flooding deliberately:
+
+```
+# Add bridge-mcsnooping 0 to the vmbr999 stanza in /etc/network/interfaces
 sudo ifreload -a
+# Rollback: remove the line (or set bridge-mcsnooping 1) and reload again
 ```
 
 **Verify no iptables or nftables rules are blocking multicast on the host:**
 
-Bridged frames between a tap and the bond pass through iptables/nftables only
-when `br_netfilter` is loaded and `net.bridge.bridge-nf-call-iptables` is 1.
-The Proxmox firewall enables this when it is active. If
-`sysctl net.bridge.bridge-nf-call-iptables` reports 0 or the key does not
-exist, FORWARD rules do not see bridged VM traffic and this check can be
-skipped.
+Bridged frames between a tap and the bond can be filtered at more than one
+layer:
+
+| Layer | When it sees bridged frames |
+|---|---|
+| nftables `bridge` family | Always applies to bridged frames; does not require `br_netfilter` (L10, L11) |
+| nftables `netdev` family | Ingress/egress hooks on the tap, bond or bridge port devices |
+| iptables and nftables `ip`/`inet` families | Only for bridged IPv4 when `br_netfilter` is loaded and `net.bridge.bridge-nf-call-iptables` is 1; the Proxmox firewall enables this when it is active |
+
+A value of 0 for `net.bridge.bridge-nf-call-iptables`, or an absent key, only
+means the IP-family compatibility hooks do not see bridged VM traffic. It does
+not mean bridge filtering can be skipped: inspect the complete applicable
+rulesets and the Proxmox datacenter, host and VM firewall policy regardless.
 
 ```
 sudo iptables -L FORWARD -n -v | grep -E '239\.|224\.'
@@ -730,9 +752,12 @@ designated multicast interface for a specific VLAN:
    and will not accidentally win multicast interface selection through
    that mechanism.
 
-4. On the Proxmox host, verify bridge-mcsnooping is 0, rp_filter is
-   not 1 on bond999 and vmbr999, and no iptables FORWARD rules are
-   blocking multicast before suspecting the guest VM configuration.
+4. On the Proxmox host, verify the bridge snooping state matches the
+   selected policy (with snooping enabled, check queries, MDB entries
+   and router ports), check rp_filter only where the host's own IP
+   stack sends or receives the multicast, and inspect all applicable
+   bridge-, netdev- and IP-family filtering and Proxmox firewall policy
+   before suspecting the guest VM configuration.
 
 5. Use ip route get 239.1.1.1 as the first diagnostic step whenever
    multicast is not reaching its destination on a multi-homed machine.
@@ -1435,7 +1460,7 @@ pimd; see section 7.3.
 
 ### 9.1 Verification Commands — Proxmox Host
 
-Verify bridge multicast snooping is disabled:
+Verify the bridge snooping state matches the selected policy:
 
 ```
 cat /sys/class/net/vmbr999/bridge/multicast_snooping
@@ -1717,15 +1742,27 @@ TTL to at least 1.
 Symptom: The physical client is sending multicast, tcpdump on the bond999
 interface shows the traffic arriving, but the VM's eth0 shows nothing.
 
-Step 1 — Verify bridge-mcsnooping is disabled:
+Step 1 — Verify the bridge snooping state matches the selected policy:
 
 ```
 cat /sys/class/net/vmbr999/bridge/multicast_snooping
 ```
 
-If this returns `1`, the bridge is performing its own snooping without a
-querier and is dropping multicast to the tap interface. Set to `0` in
-`/etc/network/interfaces` and reload.
+A value of `1` is valid for a working-snooping policy and is not by itself the
+fault. With snooping enabled, check that queries reach the bridge on VLAN 2601,
+that the VM's tap port appears in the MDB for the group, and that the uplink is
+a router port:
+
+```
+sudo tcpdump -i bond999 -nn -e -c 20 igmp
+bridge -d mdb show dev vmbr999
+bridge vlan show
+```
+
+If the tap port is missing from the MDB, diagnose the querier, the VM's
+reports and the VLAN path. Switching to `bridge-mcsnooping 0` is a deliberate
+flooding policy choice ([2.2](#22-bridge-mcsnooping-behavior)), not the default
+repair.
 
 Step 2 — Verify the VM NIC VLAN tag matches the traffic VLAN:
 
@@ -1778,9 +1815,12 @@ Step 2 — Verify the join is crossing the bond:
 sudo tcpdump -i bond999 -nn igmp
 ```
 
-Step 3 — Verify bridge-mcsnooping is disabled. If the bridge is performing
-its own snooping, it may be intercepting the IGMP join and not forwarding it
-to the upstream switch.
+Step 3 — If Step 1 showed the VM's report but Step 2 did not, inspect the
+bridge path. With snooping enabled, check the snooping state, MDB and router
+ports (`bridge -d mdb show dev vmbr999`), the tap and bond VLAN membership
+(`bridge vlan show`), and bridge-family filtering (see the Proxmox host checks in
+[3.3](#33-multicast-interface-selection-on-multi-homed-machines)). Treat disabling snooping as a deliberate policy change, not a
+first response.
 
 Step 4 — Verify the VLAN tag on the IGMP join frame matches the expected VLAN:
 
@@ -2699,6 +2739,8 @@ service units, policy and vendor release notes before deployment.
 | L7 | [Upstream iperf2 manual](https://iperf2.sourceforge.io/iperf-manpage.html) | Multicast testing; not interchangeable with iperf3 |
 | L8 | [systemd service manual](https://man7.org/linux/man-pages/man5/systemd.service.5.html) | Service lifecycle integration; installed unit/build options still need checking |
 | L9 | [tcpdump manual](https://man7.org/linux/man-pages/man8/tcpdump.8.html) | Capture options and observation limitations |
+| L10 | [nftables manual](https://www.netfilter.org/projects/nftables/manpage.html) | Address families (`bridge`, `netdev`, `ip`, `inet`) and their hooks |
+| L11 | [nftables wiki: Bridge filtering](https://wiki.nftables.org/wiki-nftables/index.php/Bridge_filtering) | Native bridge-family filtering without `br_netfilter` |
 | G1 | [RFC 2365 — Administratively Scoped IP Multicast](https://www.rfc-editor.org/rfc/rfc2365.html) | 239/8 scope requires configured administrative boundaries; it is not inherent authentication or isolation |
 
 ### Qualification still required
