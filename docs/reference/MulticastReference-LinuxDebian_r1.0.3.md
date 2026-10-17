@@ -618,18 +618,25 @@ means the IP-family compatibility hooks do not see bridged VM traffic. It does
 not mean bridge filtering can be skipped: inspect the complete applicable
 rulesets and the Proxmox datacenter, host and VM firewall policy regardless.
 
-```
-sudo iptables -L FORWARD -n -v | grep -E '239\.|224\.'
-sudo nft list ruleset | grep -E '239\.|224\.'
-```
-
-If rules appear that drop or reject multicast in the FORWARD chain, they will
-block multicast transiting from the VM tap to the bond. Remove blocking rules:
+Inspect complete rulesets with counters rather than grepping for group
+addresses. A grep misses chain default policies, set or map lookups, and rules
+that match by interface, protocol or port rather than by 239/224 address:
 
 ```
-# Remove a specific iptables FORWARD drop rule matching multicast
-sudo iptables -D FORWARD -d 239.0.0.0/8 -j DROP
+sudo nft -a list ruleset
+sudo iptables -S
+sudo iptables -L FORWARD -n -v --line-numbers
+pve-firewall status
 ```
+
+Check each chain's policy and which counters increase while the test traffic
+runs. Before changing anything, identify which manager owns the matching rule
+(Proxmox firewall `.fw` files, a host nftables configuration, or another
+tool); a direct `iptables` or `nft` edit to a managed ruleset is overwritten on
+the next reload and can bypass that manager's policy. Make the narrowest change
+in the owning manager, scoped to the bridge or port, the group and the UDP port,
+and record how to roll it back. For the Proxmox firewall, see
+[3.4](#34-firewalls-and-multicast).
 
 **Verify the bond is passing multicast frames:**
 
@@ -1781,18 +1788,20 @@ sudo tcpdump -i tap<vmid>i0 -nn multicast
 If traffic appears on the tap but not inside the VM, the issue is within the
 guest OS (interface down, firewall, application not listening).
 
-Step 4 — Verify no firewall is dropping multicast inside the VM:
+Step 4 — Verify no firewall is dropping multicast inside the VM. Inspect the
+complete ruleset, chain policies and counters (a grep for "multi" or a group
+address misses default drops, sets and interface rules):
 
 ```
-sudo iptables -L INPUT -n | grep -i multi
-sudo nft list ruleset | grep -i multi
+sudo nft -a list ruleset
+sudo iptables -S
 ```
 
-Drop any rules blocking multicast destination addresses:
-
-```
-sudo iptables -I INPUT -d 239.0.0.0/8 -j ACCEPT
-```
+If the guest firewall drops the traffic, add a scoped rule for IGMP and for
+the group and UDP port on the data interface in the guest's own firewall
+manager (nftables or ufw), as in
+[3.4](#34-firewalls-and-multicast). Do not insert a broad `iptables ACCEPT`
+alongside a managed ruleset.
 
 ### 10.3 IGMP Join Not Seen by Switch
 

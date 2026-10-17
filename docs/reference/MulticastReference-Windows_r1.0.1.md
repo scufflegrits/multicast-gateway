@@ -1029,18 +1029,28 @@ Get-NetFirewallProfile | Select Name, Enabled
 (Get-NetConnectionProfile).NetworkCategory
 ```
 
-Step 3 — Temporarily disable the Windows Firewall to isolate it as the cause:
+Step 3 — Prefer scoped diagnosis: enable drop logging (section 10.5, Step 4)
+and inspect the inbound rules that match the group and UDP port. If a controlled
+disable test is still needed, record each profile's original state and restore
+it in `finally`, rather than re-enabling every profile afterwards:
 
 ```powershell
-Set-NetFirewallProfile -All -Enabled False
+$profiles = 'Domain', 'Private', 'Public'
+$saved = Get-NetFirewallProfile -Profile $profiles | Select-Object Name, Enabled
+try {
+  Set-NetFirewallProfile -Profile $profiles -Enabled False
+  Start-Sleep -Seconds 30   # bounded observation window for the receiver
+}
+finally {
+  foreach ($p in $saved) { Set-NetFirewallProfile -Profile $p.Name -Enabled $p.Enabled }
+}
+Get-NetFirewallProfile | Select-Object Name, Enabled
 ```
 
-If multicast starts arriving, the firewall is the cause. Re-enable and add the
-correct rules:
-
-```powershell
-Set-NetFirewallProfile -All -Enabled True
-```
+`finally` does not run if the PowerShell process itself is killed; confirm the
+final state. If multicast arrives only during the test, the firewall is
+involved: add or correct a scoped rule (section 5). Group Policy can override
+local profile settings.
 
 Step 4 — Verify on the Proxmox host that traffic is arriving at the tap
 interface:
@@ -1073,10 +1083,17 @@ Step 1 — Verify the IGMP join is being sent by the Windows VM using tshark:
 tshark -i "Ethernet 2" -f "igmp" -n
 ```
 
-You should see an IGMP membership report for 239.1.1.1. If no IGMP traffic
-appears, the Windows stack is not sending the join. Verify the application
-has successfully called the socket join API (no error from iperf2 or the
-PowerShell script).
+A membership report for 239.1.1.1 is sent when the group is first joined and
+afterwards mainly in response to queries. Under IGMPv2 a host may also suppress
+its report when it hears another member's report for the same group (W12). A
+short capture without a report is therefore not proof that the join failed.
+Capture across the join itself, or for at least one full query interval, and
+correlate with:
+
+- `netsh interface ip show joins` for the interface
+- the owning socket and process (`Get-NetUDPEndpoint`)
+- no error from iperf2 or the PowerShell script's join call
+- the IGMP version actually seen on the wire
 
 Step 2 — Verify the IGMP outbound firewall rule is present:
 
@@ -1100,9 +1117,12 @@ sudo tcpdump -i bond999 -nn igmp
 
 Symptom: Multicast is received initially but stops after 60–300 seconds.
 
-This is caused by IGMP membership timeout. The switch querier is sending
-general queries, but the Windows VM is either not receiving them or not
-responding with membership reports.
+A common hypothesis is membership aging: queries are not reaching the VM, or
+its reports are not reaching the switch. Other candidates include querier or
+snooping state changes on the switch, the application leaving the group, and
+a path or interface change. Correlate local joins and socket owners, captures
+spanning complete query intervals, and switch snooping/querier state before
+settling on a cause.
 
 Step 1 — Capture IGMP on the Windows VM to verify queries are arriving:
 
@@ -1121,9 +1141,12 @@ are blocked inbound, Windows cannot process them and will not send reports:
 Get-NetFirewallRule -DisplayName "Allow Inbound IGMP" | Select Enabled, Action
 ```
 
-Step 3 — Verify the application is still running. Windows IGMP membership is
-application-driven. If the application exits or crashes, the group is left
-immediately and the switch removes the membership entry.
+Step 3 — Verify the application is still running. Socket-held membership ends
+when the socket closes. If no other local socket still holds the group on that
+interface, the stack normally sends a leave; whether and when the switch removes
+the port depends on its leave processing (last-member queries or immediate
+leave) and aging policy. Another socket on the host can keep the interface's
+aggregate membership alive after one application exits.
 
 ```powershell
 Get-Process -Name iperf -ErrorAction SilentlyContinue
@@ -1152,7 +1175,7 @@ Get-NetFirewallRule | Where-Object {
 If the active profile is Public but rules are set to Domain or Private, they
 will not apply. Recreate the rules with `-Profile Any`.
 
-Step 2 — Check for conflicting block rules with higher priority:
+Step 2 — Check for conflicting explicit block rules:
 
 ```powershell
 Get-NetFirewallRule | Where-Object {
@@ -1160,9 +1183,12 @@ Get-NetFirewallRule | Where-Object {
 } | Select DisplayName, Profile | Format-Table -AutoSize
 ```
 
-Block rules take precedence over allow rules in Windows Firewall when they are
-more specific. A block rule for all UDP inbound will override an allow rule for
-multicast UDP.
+An explicit block rule overrides any conflicting explicit allow rule,
+regardless of which is more specific (the only exception is an allow rule
+configured for authenticated bypass). A block rule for all inbound UDP therefore
+overrides an allow rule for multicast UDP. Explicit allow rules do override the
+profile's default inbound block, and rules from local and Group Policy stores
+are merged according to policy settings (W10).
 
 Step 3 — Check for domain GPO overrides:
 
@@ -1177,8 +1203,13 @@ level.
 Step 4 — Enable Windows Firewall audit logging to capture blocked traffic:
 
 ```powershell
-Set-NetFirewallProfile -All -LogBlocked True -LogFileName "C:\Windows\System32\LogFiles\Firewall\pfirewall.log"
+# Record current logging settings so they can be restored afterwards
+Get-NetFirewallProfile | Select-Object Name, LogBlocked, LogFileName
+Set-NetFirewallProfile -Profile Domain,Private,Public -LogBlocked True `
+  -LogFileName "C:\Windows\System32\LogFiles\Firewall\pfirewall.log"
 ```
+
+Limit `-Profile` to the active profile if the others should stay unchanged.
 
 Then check the log for blocked multicast entries:
 
@@ -1268,6 +1299,9 @@ service units, policy and vendor release notes before deployment.
 | W7 | [Linux bridge documentation](https://www.kernel.org/doc/html/latest/networking/bridge.html) | Underlying Proxmox bridge membership/snooping concepts |
 | W8 | [Linux IPv4 socket manual](https://man7.org/linux/man-pages/man7/ip.7.html) | Linux comparison: socket joins versus administrative/daemon-held membership |
 | W9 | [Microsoft route command](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/route_ws2008/) | Broad multicast route example; inspect installed routes rather than assume an automatic 239/8 entry |
+| W10 | [Microsoft Windows Firewall rules](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/rules) | Explicit block/allow precedence and policy merging |
+| W11 | [Microsoft Set-NetFirewallProfile](https://learn.microsoft.com/en-us/powershell/module/netsecurity/set-netfirewallprofile?view=windowsserver2025-ps) | Documented `-Profile` selection and property controls; confirm installed cmdlet version |
+| W12 | [RFC 2236, section 3](https://www.rfc-editor.org/rfc/rfc2236.html#section-3) | IGMPv2 report suppression and leave processing; determine the actual wire version |
 | G1 | [RFC 2365 — Administratively Scoped IP Multicast](https://www.rfc-editor.org/rfc/rfc2365.html) | 239/8 scope requires configured administrative boundaries; it is not inherent authentication or isolation |
 
 ### Qualification still required
