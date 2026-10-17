@@ -88,6 +88,9 @@ which transitions each consumer observes.
 
 ## Qualification and acceptance
 
+Individual test cases, including the namespace harness, are in the
+[test plan](mcgw-test-plan.md).
+
 | Test group | Evidence required |
 |---|---|
 | Representative lab | Specified Cisco router/switch software and actual firewall configuration; then each site's differences |

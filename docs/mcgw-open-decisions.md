@@ -54,6 +54,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Invalid configuration fails startup. Under the accepted design, failure to initialize a required component also fails startup; runtime failures recover with bounded backoff. |
 | Options and tradeoffs | Keep fail-start with bounded initialization retries; or start degraded and distinguish process readiness from forwarding readiness. Degraded startup changes the accepted policy. |
 | Evidence needed | Late interface/address arrival, unavailable egress, boot without carrier, systemd start timeout/restart limits; verify useful diagnostics without indefinite waiting or restart storms. |
+| Tests | [T-LIFE-02](mcgw-test-plan.md#life-and-loop--startup-validation-and-local-loops) |
 | Context | Architecture §5; review D6 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -69,6 +70,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Readiness reflects current local usability of required receivers/sinks, independently of liveness and traffic freshness. “Required” has no frozen configuration definition. Interim rule: every configured ingress receiver and sink is required for aggregate readiness ([architecture §5](architecture.md#health-and-status)); an optional-component policy remains an open alternative. |
 | Options and tradeoffs | Treat all configured components as required; or add explicit per-route/per-sink required policy. Optional outputs improve partial-service reporting but add policy complexity. |
 | Evidence needed | Define defaults, aggregate HTTP status codes, partial failures, optional-component events, and startup interaction with OD-01. A failed sink must not stop healthy sinks. |
+| Tests | [T-ISO-01](mcgw-test-plan.md#iso--sink-isolation), [T-OBS-01](mcgw-test-plan.md#obs--health-logging-and-http) |
 | Context | Architecture §5; review D7 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -99,6 +101,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | PMTU-aware output with no deliberate fragmentation or payload splitting. Count locally reported size failures; local acceptance does not prove passage through the WAN. |
 | Options and tradeoffs | Select family-specific socket settings that enforce the current policy. Operator-selectable fragmentation is an alternative proposal, not an accepted v1 capability. |
 | Evidence needed | IPv4/IPv6 tests with small local/path MTUs, route changes, and missing ICMP feedback. Verify no deliberate fragmentation and honest accounting when a downstream drop is unobservable. |
+| Tests | [T-ACC-05](mcgw-test-plan.md#acc--accounting-and-datagram-limits), T-LAB-03 |
 | Context | Architecture §§4, 8; review D8; temp.md N4 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -114,6 +117,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Sends are bounded/cancellable. Only accepted whole datagrams count as submitted; asynchronous errors do not retroactively identify an earlier lost packet. |
 | Options and tradeoffs | Connected versus unconnected output sockets; separate error-queue processing; immediate terminal failure versus bounded retry for selected errors. No unconditional retry-on-ECONNREFUSED rule is accepted. |
 | Evidence needed | Inject local/transient errors and delayed ICMP errors; verify ordering, no duplicate submission, finite completion, and exactly-once terminal offer accounting. |
+| Tests | [T-ACC-06](mcgw-test-plan.md#acc--accounting-and-datagram-limits) |
 | Context | Architecture §§3–4, 8; temp.md D-4 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -129,6 +133,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Never forward truncated input. The illustrative receive-queue request is not an established default. Per-datagram read storage and the kernel socket receive queue are different resources. |
 | Options and tradeoffs | Full supported-datagram read storage versus limit-sized storage with explicit returned-length/flag handling; define oversize/truncated precedence. Compare requested/effective socket queues and choose warning/failure policy. |
 | Evidence needed | Test empty, maximum, oversize, truncated input, ancillary-data truncation, clamped queue requests, and overflow reporting on selected kernels. Do not assume a universal sysctl default or require extra privilege without evidence. |
+| Tests | [T-ACC-03](mcgw-test-plan.md#acc--accounting-and-datagram-limits); receive-overflow case still missing |
 | Context | Architecture §§4, 6, 8; temp.md N5, N7 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -144,6 +149,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Start with bounded sink-owned copies. Shared storage, preallocated rings/slabs, and particular batching APIs are not mandatory designs. |
 | Options and tradeoffs | Compare bounded pooled copies, simpler allocation, and shared immutable ownership if needed; compare single and batched I/O. Trade throughput against latency, memory, and ownership complexity. |
 | Evidence needed | Measure fan-out integrity, allocations, garbage collection, local latency, CPU and memory at the declared benchmark envelope. Verify partial-batch accounting and ordering. |
+| Tests | [T-ACC-07](mcgw-test-plan.md#acc--accounting-and-datagram-limits), T-LAB-06 |
 | Context | Architecture §§3, 8; review D3, D10; temp.md D-6, D-7 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -159,6 +165,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Structured JSON goes to stdout/stderr and journal MESSAGE. JSON severity currently does not imply native journal PRIORITY. SIEM parsing is external. |
 | Options and tradeoffs | Keep JSON-only severity with explicit collector rules; add systemd-recognized priority prefixes; or use native journal submission. Preserve structured payload parsing across the selected approach. |
 | Evidence needed | Test journalctl severity filters, collector JSON parsing, outage/recovery correlation, rate limits/suppression, journal unavailability, and blocked/broken stdout/stderr (logging isolation, architecture §5). Freeze event fields and priority mapping. |
+| Tests | [T-OBS-03 to T-OBS-06](mcgw-test-plan.md#obs--health-logging-and-http), T-LAB-04 |
 | Context | Architecture §5; temp.md O8 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -174,6 +181,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Per-route isolation, IPv4/IPv6 ASM/SSM support, and source filtering are required. Exact socket APIs and the schema separating membership source from application allow-lists remain open. |
 | Options and tradeoffs | Prototype group/interface binding, multicast-all controls and ancillary validation under family-specific rules. Preserve isolated route behavior; a different demultiplexing implementation needs explicit rationale. Distinguish SSM range classification from source-specific joins outside those ranges. |
 | Evidence needed | Test same-port groups, same-group interfaces, unrelated host joins, wrong-interface injection, source mismatch, permitted local senders, and network membership-version compatibility. Record supported kernels/APIs. |
+| Tests | [T-MCI-01 to T-MCI-06](mcgw-test-plan.md#mci--multicast-isolation), T-ACC-02, T-LIFE-01 |
 | Context | Architecture §§3, 6, 8; review D9; temp.md N1, N3, D-3 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -189,6 +197,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Normal Linux routing or enforced interface constraint; no silent fallback. Dedicated service account and only demonstrated capabilities; host routes/firewalls/sysctls remain operator-managed. |
 | Options and tradeoffs | Choose supported Linux egress APIs and minimum capabilities after OS qualification. Establish systemd restrictions, SELinux position, effective buffer checks, and management-access trust boundary. |
 | Evidence needed | Competing routes, interface delete/recreate, privilege-denied behavior, source binding, management exposure, and rtnetlink subscriptions under the actual service sandbox. |
+| Tests | [T-IFR-05 to T-IFR-07](mcgw-test-plan.md#ifr--interface-recovery), T-LAB-07 |
 | Context | Architecture §§5–6, 8–9; review D2, D11; temp.md O4–O9 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -204,6 +213,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Unchanged routes continue; changed resources may be interrupted; rollback is best effort. Offers retain original sink identity; overlap fits the allocation budget. Discarded payloads cannot be recovered by rollback. |
 | Options and tradeoffs | Serialize and coalesce reload requests or reject concurrent requests visibly. Define requests before startup readiness, changed-instance criteria, bounded old-instance drain, and safe dispatch swaps. |
 | Evidence needed | Repeated SIGHUP, half-written/replaced config, failed preparation/rollback, near-budget overlap, sink destination changes, no-op counter continuity, and cleanup of prepared resources. |
+| Tests | [T-RLD-01 to T-RLD-07](mcgw-test-plan.md#rld--reload-and-shutdown), T-ISO-05 |
 | Context | Architecture §§3–5, 8; review D6; temp.md D-9, O12 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -219,6 +229,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Queues have byte/count/age bounds; deadlines/backoff are finite. Example values are not defaults. Performance is a measured envelope, not a universal guarantee. |
 | Options and tradeoffs | Select per-sink bounds, total budget, monotonic age/deadlines, backoff and shutdown durations, logging queue size and flush deadline, and management connection/timeout limits; choose benchmark duration and numeric local-latency target. |
 | Evidence needed | Burst and bottleneck tests, idle routes, failures, shutdown, wall-clock changes, identified VM/OS/NIC, generator/receiver loss separation, and realistic fan-out. |
+| Tests | Parameters for [ISO](mcgw-test-plan.md#iso--sink-isolation), [RLD](mcgw-test-plan.md#rld--reload-and-shutdown) and [OBS](mcgw-test-plan.md#obs--health-logging-and-http) cases |
 | Context | Architecture §8; review D8, D10 |
 | Investigation results | Not yet recorded |
 | Resolution | Pending; current position remains in force |
@@ -262,6 +273,7 @@ replace the agreed [architecture](architecture.md).
 | Current position | Counter/reason names illustrative; HTTP listener 127.0.0.1:9310 is the agreed proposed default |
 | Options and tradeoffs | Follow Prometheus naming conventions (mcgw prefix, counter totals, units) and verify port allocation/coexistence before freezing |
 | Evidence needed | Official Prometheus conventions/port registry check; bounded label and reset tests; status/HTTP fixtures; stalled-client and concurrent-scrape fault injection during traffic, reload and recovery |
+| Tests | Names used throughout the [test plan](mcgw-test-plan.md); T-OBS-07, T-OBS-08 |
 | Resolution | Pending; no claim of exclusive registered port ownership |
 
 ## Deferred feature design

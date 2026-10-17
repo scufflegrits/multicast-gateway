@@ -66,6 +66,7 @@ terms are explained in Concepts and the architecture acronym appendix.
 | [Platform references](reference/README.md) | IPv4-only supporting Cisco, Debian/Proxmox, RHEL/VMware and Windows guides; scope, evidence and qualification limits are explicit |
 | [Deployment planning](mcgw-deployment.md) | Host/network prerequisites, lifecycle integration, hardening, logging collection, and site qualification |
 | [Open decisions](mcgw-open-decisions.md) | Track unresolved proposals, current positions, alternatives, evidence needed, decision gates, and resolutions |
+| [Test plan](mcgw-test-plan.md) | Test cases written before code: levels, shared namespace environment, pseudocode cases, traceability, blockers and contract gaps |
 | [Feature ideas](mcgw-feature-ideas.md) | Nice-to-have backlog: optional improvements, their value, constraints and gates; not v1 scope |
 | [Architecture review](architecture-review.md) | Preserve review history, accepted recommendations, justifications, and research sources; architecture.md is authoritative for current decisions |
 

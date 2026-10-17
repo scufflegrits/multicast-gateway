@@ -666,6 +666,9 @@ tracks alternatives, tradeoffs, evidence, gates, status, and resolutions.
 
 ## 9. Site pilot checklist
 
+Test cases for these items and for the contracts above are tracked in the
+[test plan](mcgw-test-plan.md).
+
 | Record / test | Evidence |
 |---|---|
 | Topology | Ingress VLAN/NIC, source/group/port, outbound destination/source/NIC |
