@@ -243,6 +243,8 @@ contract is frozen. Count each offer's terminal outcome exactly once.
 | Scope | Required evidence |
 |---|---|
 | Route | Received packets/bytes, exclusive rejections, fan-out accepted |
+| Rejection precedence | A rejected datagram counts exactly one reason: the first failing check in the order `truncated`, `wrong_ingress` / `wrong_destination`, `oversize`, `source_filtered`, `self_loop` |
+| Oversize versus truncated | `oversize`: payload larger than the configured maximum, however it is detected (returned length or kernel payload-truncation flag). `truncated`: ancillary (control) data was truncated, so ingress interface or destination cannot be validated. Neither is ever forwarded |
 | Sink | Offered, submitted packets/bytes, failed, dropped by reason, pending |
 | Kernel | Available receive-overflow observations; separate from application drops |
 | Async network error | Separate event; do not invent a lost packet attribution |
@@ -463,7 +465,7 @@ built-in HTTP authentication/TLS; do not expose the listener to an untrusted WAN
 | Severity | Explicit JSON `severity`; do not assume it sets native journal `PRIORITY` |
 | Outage | Error event when a required receiver/sink becomes unavailable; emit it even when no traffic is arriving (best effort within the logging bounds below) |
 | Recovery | Informational event after local revalidation; no claim of destination delivery |
-| Flapping | Bounded transition logs and periodic suppressed-event/outage summaries; no per-dropped-packet log flood |
+| Flapping | At most a fixed number of transition records per component per interval, then one summary record with the suppressed count; periodic outage summaries; no per-dropped-packet log flood. The number and interval are OD-12 values; the summary format is OD-08 |
 | Event fields | Timestamp, event, severity, reason, host identity, route/sink IDs where applicable, interface name/index, destination, old/new state, configuration generation |
 | Recovery summary | Outage duration and counted affected sink drops; ingress losses before application receipt remain unknown |
 | Collection | Host journal collector forwards records; SIEM owns correlation, alert routing, and notification |

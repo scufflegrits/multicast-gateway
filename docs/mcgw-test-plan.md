@@ -134,6 +134,8 @@ ACTION  send(SRC, 239.1.1.1:3000, n=500, from=192.168.10.20)
         send(SRC, 239.1.1.1:3000, n=300, from=192.168.10.21)
 EXPECT  DST_A receives exactly the 500 datagrams from .20
         counter(R1, rejected{source_filtered}) == 300
+        variant: 50 datagrams from .21 with size MAX_DATAGRAM + 1 count as oversize only
+          (precedence, §4), never also as source_filtered
         counter(R1, received) == counter(R1, rejected) + counter(R1, fanout_accepted)
 ```
 
@@ -141,7 +143,7 @@ EXPECT  DST_A receives exactly the 500 datagrams from .20
 T-ACC-03  Datagram size boundaries
 Checks:   §4 empty UDP payload row; WAN/packet-size "too large / truncated"
 Level:    Integration (ENV)
-Blocked:  OD-06; MAX_DATAGRAM from OD-12; gap G2 (oversize vs truncated)
+Blocked:  OD-06; MAX_DATAGRAM from OD-12
 Status:   Ready
 
 SETUP   R1, sink A, max_datagram = MAX_DATAGRAM
@@ -149,7 +151,8 @@ ACTION  send sizes [0, 1, MAX_DATAGRAM - 1, MAX_DATAGRAM, MAX_DATAGRAM + 1], 10 
 EXPECT  DST_A receives 10 each of sizes 0 .. MAX_DATAGRAM, byte-identical
         size 0: packet counts +10, payload bytes +0, one queue frame each
         size MAX_DATAGRAM + 1: none forwarded, no partial payload anywhere,
-          counter(R1, rejected{oversize or truncated}) == 10
+          counter(R1, rejected{oversize}) == 10 (truncated is reserved for ancillary data;
+          unit-level case, as it cannot be triggered from outside)
 ```
 
 ```text
@@ -583,7 +586,7 @@ EXPECT  (a) healthz 200, readyz 200   (b) healthz 200, readyz 503 naming B
 T-OBS-02  Freshness transitions
 Checks:   §5 health table "Freshness enabled"
 Level:    Integration (ENV)
-Blocked:  gap G4 (freshness parameter ownership)
+Blocked:  OD-12 (FRESH_WINDOW)
 Status:   Ready
 
 SETUP   R1 with freshness expectation FRESH_WINDOW
@@ -595,11 +598,12 @@ EXPECT  status(R1.freshness): never_seen -> fresh -> stale; readiness unaffected
 T-OBS-03  Outage events bounded during flapping
 Checks:   §5 journal "Flapping"; accounting "Logs ... rate-limited"
 Level:    Integration (ENV)
-Blocked:  OD-08; gap G5 (bound definition)
+Blocked:  OD-08 (summary format), OD-12 (TRANSITION_LIMIT, SUMMARY_INTERVAL)
 Status:   Ready
 
 ACTION  toggle eth3 50 times in 10 s while sending 10000 datagrams
-EXPECT  transition records bounded; suppressed-event summary records present
+EXPECT  transition records for B <= TRANSITION_LIMIT per SUMMARY_INTERVAL
+        each interval with suppression ends with one summary carrying the suppressed count
         no per-dropped-datagram records
 ```
 
@@ -758,16 +762,16 @@ existing checklists.
 | §3 isolation | T-ISO-01, T-ISO-02 | — |
 | §3 send batches and bounds | T-ACC-07, T-IFR-02 | — |
 | §3 offer identity, replacement, reload memory | T-ISO-05, T-RLD-03 | — |
-| §4 accounting equations and outcomes | T-ACC-01, T-ACC-02, T-ACC-04, T-OBS-08 | G1 |
-| §4 empty payload, oversize, truncation | T-ACC-03 | G2 |
+| §4 accounting equations and outcomes | T-ACC-01, T-ACC-02, T-ACC-04, T-OBS-08 | — |
+| §4 empty payload, oversize, truncation | T-ACC-03 | Ancillary truncation is unit-level only |
 | §4 async errors | T-ACC-06 | — |
 | §4 path-size policy | T-ACC-05, T-LAB-03 | — |
 | §5 startup and readiness notification | T-LIFE-02, T-LIFE-03 | — |
 | §5 interface monitoring | T-IFR-01 .. T-IFR-08 | — |
 | §5 reload and shutdown | T-RLD-01 .. T-RLD-07 | G3 |
-| §5 health, readiness, freshness | T-OBS-01, T-OBS-02 | G4 |
+| §5 health, readiness, freshness | T-OBS-01, T-OBS-02 | — |
 | §5 management bounds and snapshot isolation | T-OBS-07, T-OBS-08 | — |
-| §5 journal events and logging isolation | T-OBS-03 .. T-OBS-06, T-LAB-04 | G5 |
+| §5 journal events and logging isolation | T-OBS-03 .. T-OBS-06, T-LAB-04 | — |
 | §6 validation and CLI | T-LIFE-01, T-MCI-05 | — |
 | §6 receive path and multicast isolation | T-MCI-01 .. T-MCI-06 | — |
 | §6 local-loop guard | T-LOOP-01, T-LOOP-02 | G6 |
@@ -784,14 +788,14 @@ counts suggest which decisions to resolve first.
 
 | Decision | Cases blocked | Notes |
 |---|---|---|
-| OD-12 | 11 | Supplies parameters only; cases are fully written with placeholders |
+| OD-12 | 13 | Supplies parameters only; cases are fully written with placeholders |
 | OD-15 | 10 | Supplies names only; cases are fully written |
 | OD-09 | 8 | Decides socket APIs and schema; the MCI results are its evidence |
 | OD-11 | 5 | Decides reload serialization and transitions |
 | OD-08 | 4 | Logging transport and event fields |
 | OD-10 | 3 | Egress enforcement and permissions |
 | OD-01, OD-02, OD-04, OD-05, OD-06, OD-07 | 1 each | OD-01/OD-02 current positions are used meanwhile |
-| Contract gaps and harness methods | 7 | G2, G4, G5, G6, guard policy, and two harness methods to qualify |
+| Contract gaps and harness methods | 4 | G6, guard policy, and two harness methods to qualify |
 
 46 cases in total: 41 Ready and 5 Draft; 13 lab and qualification stubs are
 listed separately. OD-12 and OD-15 block the most cases
@@ -800,15 +804,15 @@ behavior are OD-09 and OD-11.
 
 ## Contract gaps found
 
-Found while writing cases. Each needs an owner decision or an architecture/OD
-update; none is resolved here.
+Found while writing cases. Open gaps need an owner decision; resolved gaps keep
+their row with the location of the resolution.
 
-| ID | Gap | Affected cases | Suggested home |
+| ID | Gap | Affected cases | Status / home |
 |---|---|---|---|
-| G1 | Rejection precedence: when a datagram fails several checks (e.g. disallowed source and oversize), which single exclusive reason is counted is not defined | T-ACC-02, T-ACC-04 | Architecture §4 accounting |
-| G2 | `oversize` and `truncated` are both rejection reasons but their difference (configured limit versus read-buffer truncation) is not defined | T-ACC-03 | OD-06 |
-| G3 | What `/readyz` reports while a changed route is interrupted during reload is not specified | T-RLD-04, T-RLD-05 | OD-02 / OD-11 |
-| G4 | Freshness windows are an optional config field, but no decision owns their default or bounds | T-OBS-02 | Config contract (§8) or OD-12 |
-| G5 | "Bounded transition logs" has no definition of the bound or summary interval | T-OBS-03 | OD-08 / OD-12 |
-| G6 | "Provable local configuration cycle" is not defined: routes receive multicast and sinks send unicast, so the configurations that count as a provable cycle need examples | T-LOOP-01 | Architecture §6 local-loop guard |
-| G7 | Some behavior (control-loop stall for `/healthz` 503, partial batches, netlink overflow) cannot be triggered from outside; whether test-only fault-injection hooks are allowed is undecided | T-ACC-07, T-IFR-08, `/healthz` 503 path | New OD or implementation guideline |
+| G1 | Rejection precedence: when a datagram fails several checks (e.g. disallowed source and oversize), which single exclusive reason is counted is not defined | T-ACC-02, T-ACC-04 | Resolved 2026-10-17: architecture §4 "Rejection precedence" |
+| G2 | `oversize` and `truncated` are both rejection reasons but their difference (configured limit versus read-buffer truncation) is not defined | T-ACC-03 | Resolved 2026-10-17: architecture §4 "Oversize versus truncated"; noted in OD-06 |
+| G3 | What `/readyz` reports while a changed route is interrupted during reload is not specified | T-RLD-04, T-RLD-05 | Open: OD-02 / OD-11 |
+| G4 | Freshness windows are an optional config field, but no decision owns their default or bounds | T-OBS-02 | Resolved 2026-10-17: values owned by OD-12 |
+| G5 | "Bounded transition logs" has no definition of the bound or summary interval | T-OBS-03 | Resolved 2026-10-17: limit shape in architecture §5 "Flapping"; values OD-12, summary format OD-08 |
+| G6 | "Provable local configuration cycle" is not defined: routes receive multicast and sinks send unicast, so the configurations that count as a provable cycle need examples | T-LOOP-01 | Open: architecture §6 local-loop guard |
+| G7 | Some behavior (control-loop stall for `/healthz` 503, partial batches, netlink overflow) cannot be triggered from outside; whether test-only fault-injection hooks are allowed is undecided | T-ACC-07, T-IFR-08, `/healthz` 503 path | Open: new OD or implementation guideline |

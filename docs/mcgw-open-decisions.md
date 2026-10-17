@@ -131,7 +131,7 @@ replace the agreed [architecture](architecture.md).
 | Status | Open |
 | Decision gate | Before receive-path implementation |
 | Current position | Never forward truncated input. The illustrative receive-queue request is not an established default. Per-datagram read storage and the kernel socket receive queue are different resources. |
-| Options and tradeoffs | Full supported-datagram read storage versus limit-sized storage with explicit returned-length/flag handling; define oversize/truncated precedence. Compare requested/effective socket queues and choose warning/failure policy. |
+| Options and tradeoffs | Full supported-datagram read storage versus limit-sized storage with explicit returned-length/flag handling; reason meanings and precedence are now defined in architecture §4 (test-plan gaps G1, G2) and hold for either storage option. Compare requested/effective socket queues and choose warning/failure policy. |
 | Evidence needed | Test empty, maximum, oversize, truncated input, ancillary-data truncation, clamped queue requests, and overflow reporting on selected kernels. Do not assume a universal sysctl default or require extra privilege without evidence. |
 | Tests | [T-ACC-03](mcgw-test-plan.md#acc--accounting-and-datagram-limits); receive-overflow case still missing |
 | Context | Architecture §§4, 6, 8; temp.md N5, N7 |
@@ -163,7 +163,7 @@ replace the agreed [architecture](architecture.md).
 | Status | Open |
 | Decision gate | Before operational logging contract / pilot |
 | Current position | Structured JSON goes to stdout/stderr and journal MESSAGE. JSON severity currently does not imply native journal PRIORITY. SIEM parsing is external. |
-| Options and tradeoffs | Keep JSON-only severity with explicit collector rules; add systemd-recognized priority prefixes; or use native journal submission. Preserve structured payload parsing across the selected approach. |
+| Options and tradeoffs | Keep JSON-only severity with explicit collector rules; add systemd-recognized priority prefixes; or use native journal submission. Preserve structured payload parsing across the selected approach. Freeze the flapping summary record (suppressed count per component and interval, architecture §5). |
 | Evidence needed | Test journalctl severity filters, collector JSON parsing, outage/recovery correlation, rate limits/suppression, journal unavailability, and blocked/broken stdout/stderr (logging isolation, architecture §5). Freeze event fields and priority mapping. |
 | Tests | [T-OBS-03 to T-OBS-06](mcgw-test-plan.md#obs--health-logging-and-http), T-LAB-04 |
 | Context | Architecture §5; temp.md O8 |
@@ -227,7 +227,7 @@ replace the agreed [architecture](architecture.md).
 | Status | Open |
 | Decision gate | Before schema freeze / release benchmark |
 | Current position | Queues have byte/count/age bounds; deadlines/backoff are finite. Example values are not defaults. Performance is a measured envelope, not a universal guarantee. |
-| Options and tradeoffs | Select per-sink bounds, total budget, monotonic age/deadlines, backoff and shutdown durations, logging queue size and flush deadline, and management connection/timeout limits; choose benchmark duration and numeric local-latency target. |
+| Options and tradeoffs | Select per-sink bounds, total budget, monotonic age/deadlines, backoff and shutdown durations, logging queue size and flush deadline, transition-record limit and summary interval, freshness window bounds and defaults, and management connection/timeout limits; choose benchmark duration and numeric local-latency target. |
 | Evidence needed | Burst and bottleneck tests, idle routes, failures, shutdown, wall-clock changes, identified VM/OS/NIC, generator/receiver loss separation, and realistic fan-out. |
 | Tests | Parameters for [ISO](mcgw-test-plan.md#iso--sink-isolation), [RLD](mcgw-test-plan.md#rld--reload-and-shutdown) and [OBS](mcgw-test-plan.md#obs--health-logging-and-http) cases |
 | Context | Architecture §8; review D8, D10 |
