@@ -35,7 +35,7 @@ prototype/OS qualification gates; none is a tested-support claim.
 | Interface monitoring and recovery | Detect relevant local network changes, expose failures, and reinitialize affected resources |
 | Metrics and read-only status | Separate liveness, local readiness, and traffic freshness |
 | Journal events | Record structured outage/recovery events for host collectors and SIEM alerting |
-| Local-loop guards | Reject provable local cycles and detect configured local-source feedback; no universal multi-site loop guarantee |
+| Local-loop guards | Detect configured local-source feedback at runtime and warn about suspicious local sink destinations; no universal multi-site loop guarantee |
 | Service lifecycle | Validate configuration, apply controlled reloads, shut down within a deadline, and integrate with systemd |
 
 ## Guarantees and limits

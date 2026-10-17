@@ -729,11 +729,19 @@ EXPECT  READY=1 only after all required resources initialized
 ```
 
 ```text
-T-LOOP-01  Provable local cycle rejected on load and reload
-Checks:   §6 local-loop guard "Static"
-Level:    Unit and Integration
-Blocked:  OD-17 (definition of a provable local cycle)
-Status:   Draft
+T-LOOP-01  Local sink on a route port warns, does not reject
+Checks:   §6 local-loop guard "Static"; OD-17 resolution
+Level:    Integration (ENV) plus unit cases
+Blocked:  none
+Status:   Ready
+
+SETUP   R1 = 239.1.1.1:3000 eth0; sink L -> 192.168.10.1:3000 (GW's own eth0 address);
+        sink M -> 127.0.0.1:3000; sink N -> 127.0.0.1:4000 (no route uses port 4000)
+ACTION  mcgw check-config; then mcgw run; then reload(same cfg)
+EXPECT  check-config exits 0 with one warning each for L and M; none for N
+        run and reload start normally and repeat the warnings
+        traffic to 239.1.1.1:3000: nothing sent by L or M re-enters R1 as forwarded input
+          (any arrival at a receive socket counted wrong_destination)
 ```
 
 ```text
@@ -789,7 +797,7 @@ existing checklists.
 | §5 journal events and logging isolation | T-OBS-03 .. T-OBS-06, T-LAB-04 | — |
 | §6 validation and CLI | T-LIFE-01, T-MCI-05 | — |
 | §6 receive path and multicast isolation | T-MCI-01 .. T-MCI-06 | — |
-| §6 local-loop guard | T-LOOP-01, T-LOOP-02 | OD-17 |
+| §6 local-loop guard | T-LOOP-01, T-LOOP-02 | — |
 | §6 trust and amplification (OD-03) | T-LAB-05 | No integration case until rate policy exists |
 | Kernel receive overflow observations (OD-06) | — | No case yet: needs an overflow-inducing harness and the reporting decision |
 | Service sandbox and privileges (OD-10) | T-LAB-07 | Integration case possible once the unit file exists |
@@ -809,11 +817,11 @@ counts suggest which decisions to resolve first.
 | OD-11 | 5 | Decides reload serialization and transitions |
 | OD-08 | 4 | Logging transport and event fields |
 | OD-10 | 3 | Egress enforcement and permissions |
-| OD-01, OD-02, OD-04, OD-05, OD-06, OD-07, OD-17 | 1 each | OD-01/OD-02 current positions are used meanwhile |
+| OD-01, OD-02, OD-04, OD-05, OD-06, OD-07 | 1 each | OD-01/OD-02 current positions are used meanwhile |
 | OD-16 | 0 (3 use it) | Resolved: test-build hooks; listed on the cases that need one |
 | Harness methods and guard policy | 3 | Two harness methods to qualify; local-loop guard policy |
 
-47 cases in total: 42 Ready and 5 Draft; 13 lab and qualification stubs are
+47 cases in total: 43 Ready and 4 Draft; 13 lab and qualification stubs are
 listed separately. OD-12 and OD-15 block the most cases
 but only supply numbers and names, so the first decisions that change test
 behavior are OD-09 and OD-11.
@@ -830,5 +838,5 @@ their row with the location of the resolution.
 | G3 | What `/readyz` reports while a changed route is interrupted during reload is not specified | T-RLD-04, T-RLD-05 | Resolved 2026-10-17: architecture §5 "Reload interruption"; noted in OD-11 |
 | G4 | Freshness windows are an optional config field, but no decision owns their default or bounds | T-OBS-02 | Resolved 2026-10-17: values owned by OD-12 |
 | G5 | "Bounded transition logs" has no definition of the bound or summary interval | T-OBS-03 | Resolved 2026-10-17: limit shape in architecture §5 "Flapping"; values OD-12, summary format OD-08 |
-| G6 | "Provable local configuration cycle" is not defined: routes receive multicast and sinks send unicast, so the configurations that count as a provable cycle need examples | T-LOOP-01 | Tracked in OD-17 with options and a recommendation |
+| G6 | "Provable local configuration cycle" is not defined: routes receive multicast and sinks send unicast, so the configurations that count as a provable cycle need examples | T-LOOP-01 | Resolved 2026-10-17: OD-17, no static rejection; warning for local sinks on route ports |
 | G7 | Some behavior (control-loop stall for `/healthz` 503, partial batches, netlink overflow) cannot be triggered from outside; whether test-only fault-injection hooks are allowed is undecided | T-ACC-07, T-IFR-08, `/healthz` 503 path | Resolved 2026-10-17: OD-16, test-build hooks only; T-OBS-09 added |

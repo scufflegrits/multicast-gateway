@@ -578,7 +578,7 @@ Mechanism references: [review S2, S9, S11, S16, S24](architecture-review.md#appe
 
 | Mechanism | Boundary |
 |---|---|
-| Static | Reject provable local configuration cycles on every load/reload; what counts as provable is open ([OD-17](mcgw-open-decisions.md#od-17)) |
+| Static | No static cycle rejection: a single configuration cannot form a cycle (multicast in, unicast out; unicast reaching a receive socket is rejected as `wrong_destination`). Load and reload warn when a sink targets a local address, including loopback, on a configured route port ([OD-17](mcgw-open-decisions.md#od-17)) |
 | Runtime | Compare sources with registered actual local sink endpoints; count configured feedback rejections as `self_loop` |
 | Endpoint tracking | Resolve wildcard binds against relevant local addresses; update on interface changes and reload overlap |
 | Legitimate local sender | Explicit guard policy; avoid rejecting every bind merely because a route accepts any source |

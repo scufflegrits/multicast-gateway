@@ -43,7 +43,7 @@ replace the agreed [architecture](architecture.md).
 | [OD-14](#od-14) | Output QoS and hop-limit controls | Confirmed site requirement | Deferred |
 | [OD-15](#od-15) | Metrics names and port qualification | Before observability schema freeze | Open |
 | [OD-16](#od-16) | Test-only fault-injection hooks | Before data-path implementation | Resolved |
-| [OD-17](#od-17) | Static local-cycle definition | Before config validation implementation | Open |
+| [OD-17](#od-17) | Static local-cycle definition | Before config validation implementation | Resolved |
 
 ## OD-01
 
@@ -299,7 +299,7 @@ replace the agreed [architecture](architecture.md).
 
 | Field | Record |
 |---|---|
-| Status | Open |
+| Status | Resolved |
 | Decision gate | Before config validation implementation |
 | Current position | Architecture §6 requires rejecting "provable local configuration cycles" but does not define them. Routes receive multicast only and sinks send unicast only, so one mcgw configuration cannot feed its own output back into a route. A unicast datagram reaching a wildcard-bound receive socket is already rejected as `wrong_destination` |
 | Options and tradeoffs | A. Narrow static rule: reject or warn on a sink whose destination is a local address (including loopback) using a configured route port; catches misconfiguration, but the destination check already prevents forwarding. B. Reject every sink to a local address; too strong, because local consumer applications are a legitimate use. C. Withdraw the static guarantee: state that a single configuration cannot form a cycle, rely on the runtime `self_loop` guard, and keep external relays and other instances as operator responsibility. D. Cross-instance checks on one host; out of v1 scope |
@@ -307,7 +307,7 @@ replace the agreed [architecture](architecture.md).
 | Evidence needed | Confirm the wildcard-bind and destination-check behavior with T-MCI-01 / T-MCI-03 results (OD-09); owner choice |
 | Tests | [T-LOOP-01](mcgw-test-plan.md#life-and-loop--startup-validation-and-local-loops) |
 | Context | Test-plan gap G6; architecture §6 local-loop guard |
-| Resolution | Pending; current position remains in force |
+| Resolution | 2026-10-17: option C with A as a warning. No static cycle rejection; validation warns when a sink targets a local address (including loopback) on a configured route port; the runtime `self_loop` guard and operator responsibility for external cycles remain. Recorded in architecture §6 "Static". Confirm the destination-check assumption with T-MCI-01 / T-MCI-03 when OD-09 runs |
 
 ## Deferred feature design
 
