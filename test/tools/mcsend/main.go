@@ -1,3 +1,5 @@
+//go:build linux
+
 // Command mcsend sends numbered UDP datagrams for mcgw tests.
 //
 // Payload layout: bytes 0-7 sequence number, bytes 8-15 send time in Unix
@@ -41,7 +43,7 @@ func main() {
 	if err != nil {
 		fail("bind %v: %v", local, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if dst.IP.IsMulticast() {
 		ifindex := 0
@@ -86,10 +88,12 @@ func main() {
 		time.Sleep(time.Until(next))
 	}
 
-	json.NewEncoder(os.Stdout).Encode(map[string]any{
+	if err := json.NewEncoder(os.Stdout).Encode(map[string]any{
 		"tool": "mcsend", "to": dst.String(), "from": conn.LocalAddr().String(),
 		"iface": *iface, "size": *size, "sent": sent, "errors": errs,
-	})
+	}); err != nil {
+		fail("write summary: %v", err)
+	}
 }
 
 func control(conn *net.UDPConn, fn func(fd int) error) error {

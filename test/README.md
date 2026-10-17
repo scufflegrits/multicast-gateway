@@ -114,6 +114,8 @@ prints; it is not committed.
 | `test/bin/... missing` | Run `test/build.sh` as your normal user |
 | `ip link add ... netns` fails | Record the `ip -V` output; the script needs an iproute2 that creates veth pairs directly in namespaces |
 | `go: go.mod requires go >= ...` | Install a newer Go as described in step 1 |
+| `govulncheck` reports GO-2026-4971 | Expected with Debian 13's Go 1.24.4: a Windows-only panic in `net`, fixed in Go 1.25.10, not reachable on Linux. Use Go 1.25.10 or newer to clear it |
+| `govulncheck: Loading packages failed ... mismatch` | govulncheck was built with an older Go than the `go` on `PATH`; rebuild it with `go install golang.org/x/vuln/cmd/govulncheck@latest` |
 
 ## Layout
 

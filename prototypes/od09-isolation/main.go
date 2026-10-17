@@ -1,3 +1,5 @@
+//go:build linux
+
 // Command od09-isolation is a throwaway OD-09 prototype: a minimal IPv4
 // multicast receiver whose socket isolation options can be switched, so a run
 // shows which datagrams the kernel delivers to the socket and which the
@@ -66,13 +68,15 @@ func main() {
 	}
 	file := os.NewFile(uintptr(fd), "od09")
 	pc, err := net.FilePacketConn(file)
-	file.Close()
+	_ = file.Close()
 	if err != nil {
 		fail("wrap socket: %v", err)
 	}
 	conn := pc.(*net.UDPConn)
 	stopOnSignal(conn)
-	conn.SetReadDeadline(time.Now().Add(*duration))
+	if err := conn.SetReadDeadline(time.Now().Add(*duration)); err != nil {
+		fail("set read deadline: %v", err)
+	}
 
 	enc := json.NewEncoder(os.Stdout)
 	buf := make([]byte, *maxDatagram+1)
@@ -99,7 +103,7 @@ func main() {
 		key := origin{Dst: ipString(dst), IfIndex: ifindex, Src: src.IP.String(), Verdict: v}
 		counts[key]++
 		if *lines {
-			enc.Encode(map[string]any{"name": *name, "dst": key.Dst, "ifindex": ifindex,
+			_ = enc.Encode(map[string]any{"name": *name, "dst": key.Dst, "ifindex": ifindex,
 				"src": src.String(), "len": n, "seq": seq(buf[:min(n, len(buf))]), "verdict": v})
 		}
 	}
@@ -113,12 +117,14 @@ func main() {
 		a, b := origins[i], origins[j]
 		return fmt.Sprint(a.Dst, a.IfIndex, a.Src, a.Verdict) < fmt.Sprint(b.Dst, b.IfIndex, b.Src, b.Verdict)
 	})
-	enc.Encode(map[string]any{
+	if err := enc.Encode(map[string]any{
 		"tool": "od09-isolation", "name": *name, "go": runtime.Version(),
 		"options": map[string]any{"group": group.String(), "port": *port, "iface": ifi.Name,
 			"ifindex": ifi.Index, "source": *sourceS, "bind": *bind, "mcall": *mcall, "max": *maxDatagram},
 		"received": received, "foreign_delivered": foreign, "verdicts": verdicts, "origins": origins,
-	})
+	}); err != nil {
+		fail("write summary: %v", err)
+	}
 }
 
 // openSocket creates the receive socket with the selected isolation options.
@@ -245,7 +251,7 @@ func ipString(ip net.IP) string {
 func stopOnSignal(conn *net.UDPConn) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	go func() { <-sig; conn.Close() }()
+	go func() { <-sig; _ = conn.Close() }()
 }
 
 func fail(format string, args ...any) {

@@ -23,16 +23,16 @@ func main() {
 
 	addr, err := net.ResolveUDPAddr("udp4", *listen)
 	if err != nil || *listen == "" {
-		fmt.Fprintf(os.Stderr, "mcrecv: invalid -listen %q: %v\n", *listen, err)
-		os.Exit(2)
+		fail("invalid -listen %q: %v", *listen, err)
 	}
 	conn, err := net.ListenUDP("udp4", addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mcrecv: bind %v: %v\n", addr, err)
-		os.Exit(2)
+		fail("bind %v: %v", addr, err)
 	}
 	stopOnSignal(conn)
-	conn.SetReadDeadline(time.Now().Add(*duration))
+	if err := conn.SetReadDeadline(time.Now().Add(*duration)); err != nil {
+		fail("set read deadline: %v", err)
+	}
 
 	enc := json.NewEncoder(os.Stdout)
 	buf := make([]byte, 65536)
@@ -59,18 +59,25 @@ func main() {
 			last = seq
 		}
 		if *lines {
-			enc.Encode(map[string]any{"seq": seq, "len": n, "src": src.String()})
+			_ = enc.Encode(map[string]any{"seq": seq, "len": n, "src": src.String()})
 		}
 	}
-	enc.Encode(map[string]any{
+	if err := enc.Encode(map[string]any{
 		"tool": "mcrecv", "listen": addr.String(), "received": received,
 		"bytes": bytes, "out_of_order": outOfOrder, "sources": sources,
-	})
+	}); err != nil {
+		fail("write summary: %v", err)
+	}
 }
 
 // stopOnSignal closes the socket on SIGINT/SIGTERM so the summary still prints.
 func stopOnSignal(conn *net.UDPConn) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	go func() { <-sig; conn.Close() }()
+	go func() { <-sig; _ = conn.Close() }()
+}
+
+func fail(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "mcrecv: "+format+"\n", args...)
+	os.Exit(2)
 }
