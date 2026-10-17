@@ -467,11 +467,13 @@ This flooding behavior creates two specific risks for multicast:
 
 **Risk 1 — RSPAN traffic masquerades as multicast**
 
-RSPAN copies frames verbatim including their destination MAC addresses. If the
-mirrored traffic includes multicast frames (which it almost always will given
-that IGMP, PVST+, and application multicast all use multicast MAC addresses),
-those copied frames enter the RSPAN VLAN and are flooded everywhere the RSPAN
-VLAN is carried. This can cause multicast frames from production VLANs to appear
+RSPAN copies mirrored frames with their original destination MAC addresses,
+but carries them in the RSPAN VLAN in place of their original VLAN identity.
+Not every frame is mirrored: certain Layer 2 control protocols (for example
+STP BPDUs, CDP, VTP, DTP and PAgP) are excluded on the documented Catalyst 9300
+release (C4). Mirrored multicast frames (IGMP and application multicast use
+multicast MAC addresses) enter the RSPAN VLAN and are flooded everywhere the
+RSPAN VLAN is carried. This can cause multicast frames from production VLANs to appear
 unexpectedly on monitoring endpoints in other parts of the network.
 
 **Risk 2 — RSPAN VLAN flooding interferes with IGMP snooping**
@@ -498,22 +500,44 @@ vlan 50
 
 ### 7.2 Worked Example — VLAN 50 and 239.x.x.x
 
-In this environment RSPAN VLAN 50 is configured as follows:
+The documented RSPAN construction has three parts (C4): a source session that
+copies the source port into the RSPAN VLAN, the RSPAN VLAN as transport, and a
+destination session that copies the RSPAN VLAN to a physical destination port
+where the capture host is attached:
 
 ```
 Source:      SWITCH02 Gi1/0/16 (access port, VLAN 2616)
-Destination: RSPAN VLAN 50
-Path:        SWITCH02 → SWITCH01 → PVE04 bond999 → vmbr999 → Debian VM (tag 50)
+Transport:   RSPAN VLAN 50 (SWITCH02 → SWITCH01 trunk)
+Destination: SWITCH01 destination port (example Gi1/0/24) → capture host NIC
 ```
 
-The RSPAN session on SWITCH02:
+The RSPAN source session on SWITCH02:
 
 ```
 monitor session 1 source interface Gi1/0/16
 monitor session 1 destination remote vlan 50
 ```
 
-The Debian VM on PVE04 with NIC tagged to VLAN 50 receives the mirrored stream.
+The RSPAN destination session on SWITCH01 (example port; select an unused one):
+
+```
+monitor session 2 source remote vlan 50
+monitor session 2 destination interface Gi1/0/24
+```
+
+The capture host can be a physical machine on Gi1/0/24, or a capture VM given
+that port through a dedicated PVE04 NIC.
+
+**Unqualified lab extension: VM on the transport VLAN.** Carrying VLAN 50 on
+Po4 to PVE04 and attaching a Debian VM with a NIC tagged 50 to vmbr999 consumes
+the transport VLAN directly, without a destination session. This is not the
+documented construction and must be validated before relying on it. Points to
+test include: whether all expected mirrored frames reach the VM; vmbr999 MAC
+learning on VLAN 50 (mirrored source MACs learned on bond999 can cause later
+mirrored frames to those MACs to be dropped rather than forwarded to the tap);
+bridge multicast snooping on VLAN 50 filtering mirrored multicast; and the
+guest NIC's promiscuous capture behavior. The flow below describes this
+extension as built in the lab.
 
 Multicast interaction in this scenario:
 
@@ -533,10 +557,12 @@ Debian VM receives the mirrored multicast frame tagged as VLAN 50
 Wireshark on the VM sees 239.x.x.x traffic — this is expected and correct
 ```
 
-What you observe in Wireshark on the Debian VM is the full unmodified frame
-including PVST+ BPDUs, ARP broadcasts, and multicast application traffic. This
-is correct behavior — the RSPAN session delivers everything that crosses the
-source port.
+What you observe in Wireshark is the mirrored traffic the platform supports
+(for example ARP broadcasts and multicast application traffic), not a complete
+original-wire record. Excluded Layer 2 protocols such as STP BPDUs do not
+appear, the original VLAN tag is replaced by the RSPAN VLAN, and replication
+limits or oversubscription can drop mirrored copies. Treat absence of a frame
+in the capture as inconclusive about the source port.
 
 Important: the 239.x.x.x traffic appearing in the RSPAN capture is a copy of
 the production multicast stream. It does not represent the VM joining that
@@ -560,10 +586,11 @@ To prevent RSPAN from interfering with multicast outside its intended scope:
     switchport trunk allowed vlan remove 50
    ```
 
-3. Do not place production VMs or servers on the RSPAN VLAN. A capture VM
-   receiving mirrored traffic is the intended and correct use. A production
-   VM on the RSPAN VLAN will receive flooded mirror traffic and may behave
-   unexpectedly.
+3. Do not place production VMs or servers on the RSPAN VLAN; they will
+   receive flooded mirror traffic and may behave unexpectedly. The supported
+   capture point is a destination-session port (7.2). A capture VM attached
+   directly to the transport VLAN is the unqualified lab extension described
+   in 7.2.
 
 4. Monitor RSPAN VLAN bandwidth utilization. On a busy source port, the
    mirror copy adds traffic on the carried monitoring path; utilization depends
@@ -700,6 +727,7 @@ service units, policy and vendor release notes before deployment.
 | C1 | [Catalyst 9300 IOS XE 17.15.x multicast configuration guide](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/17-15/configuration_guide/ip_mcast_rtng/b_1715_ip_mcast_rtng_9300_cg.pdf) | Querier role/source/version and TCN behavior; not qualification of every target build |
 | C2 | [Catalyst 9300 IOS XE 17.13.x multicast command reference](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/17-13/command_reference/b_1713_9300_cr/ip_multicast_routing.html) | CLI mechanism cross-check; exact 17.15/17.18 image syntax must be inspected |
 | C3 | [Catalyst 9300 IOS XE 17.12.x IGMP configuration](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/17-12/configuration_guide/ip_mcast_rtng/b_1712_ip_mcast_rtng_9300_cg/configuring_igmp.html) | Earlier documented querier and topology-change behavior; version-specific context |
+| C4 | [Catalyst 9300 IOS XE 17.15.x: Configuring SPAN and RSPAN](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9300/software/release/17-15/configuration_guide/nmgmt/b_1715_nmgmt_9300_cg/configuring_span_and_rspan.html) | Mirrored-traffic limitations (excluded L2 protocols, RSPAN VLAN identity) and the source/transport/destination session construction; other platforms/builds unqualified |
 | G1 | [RFC 2365 — Administratively Scoped IP Multicast](https://www.rfc-editor.org/rfc/rfc2365.html) | 239/8 scope requires configured administrative boundaries; it is not inherent authentication or isolation |
 
 ### Qualification still required
