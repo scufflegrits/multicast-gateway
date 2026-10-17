@@ -60,6 +60,7 @@ terms are explained in Concepts and the architecture acronym appendix.
 
 | Document | Purpose |
 |---|---|
+| [Status and next steps](mcgw-status.md) | Where the project stands and what to do next; read first when resuming |
 | [Concepts](mcgw-concepts.md) | Explain the vocabulary, network behavior, and forwarding-confirmation boundary before reading the architecture |
 | [Architecture](architecture.md) | Define scope, behavior, guarantees, design rationale, diagnostic evidence, and open validation choices |
 | [Troubleshooting](mcgw-troubleshooting.md) | Walk operators through symptoms, checks, evidence, and next actions |

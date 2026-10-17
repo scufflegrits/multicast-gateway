@@ -37,6 +37,7 @@ only; that narrower guide coverage does not change the planned dual-stack design
 
 | Reader / task | Document | Purpose |
 |---|---|---|
+| Resume work | [Status and next steps](docs/mcgw-status.md) | Where the project stands and the next actions |
 | Start here | [Documentation overview](docs/README.md) | Project capabilities, limits and reading guide |
 | Learn the vocabulary | [Concepts](docs/mcgw-concepts.md) | Networking concepts and diagrams for newcomers |
 | Understand or implement the design | [Architecture](docs/architecture.md) | Forwarding contracts, lifecycle diagrams, rationale and validation gates |
