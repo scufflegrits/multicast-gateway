@@ -39,7 +39,7 @@ outside this guide. mcgw itself retains its separate IPv4/IPv6 design scope.
 > guest VMs on VMware vSphere 9 (ESXi 9 hosts, vCenter 9). It is the RHEL
 > companion to [Debian/Proxmox guide](MulticastReference-LinuxDebian_r1.0.3.md), which covers Debian
 > guests on Proxmox. Network topology, VLAN numbering, and switch behavior are
-> the same as in MulticastReference-Cisco_r1.0.0.md.
+> the same as in the [Cisco guide](MulticastReference-Cisco_r1.0.0.md).
 >
 > Where RHEL 9 and RHEL 10 differ, the difference is called out. The main
 > differences that affect this guide are:
@@ -172,8 +172,8 @@ Physical client (VLAN 2601)
 
 Multicast is intra-VLAN only. No inter-VLAN multicast routing is required.
 Multicast group addresses are in the 239.0.0.0/8 administratively scoped range.
-The Cisco switches handle IGMP snooping and querier duties as described in
-MulticastReference-Cisco_r1.0.0.md. The querier for VLAN 2601 is
+The Cisco switches handle IGMP snooping and querier duties as described in the
+[Cisco guide](MulticastReference-Cisco_r1.0.0.md). The querier for VLAN 2601 is
 `10.32.204.254` on SWITCH01.
 
 There is no Linux bridge in either form. On bare metal the RHEL kernel talks to
@@ -1698,7 +1698,7 @@ show ip igmp snooping groups vlan 2601
 ```
 
 The trunk toward SWITCH02 should be listed for 239.1.1.1. If either entry is
-missing, follow MulticastReference-Cisco_r1.0.0.md section 8.1.
+missing, follow [Cisco guide §8.1](MulticastReference-Cisco_r1.0.0.md#81-multicast-not-reaching-receivers).
 
 **Step 6 — Start the sender on the RHEL VM**
 
@@ -1949,7 +1949,7 @@ This is the most common cause of this symptom on RHEL.
 
 Step 4 — No queries in tcpdump: the querier is not active, or queries are not
 reaching this VLAN or port. On VMware, check the uplink capture for queries
-(`--dir 0`). See MulticastReference-Cisco_r1.0.0.md section 3.
+(`--dir 0`). See [Cisco guide §3](MulticastReference-Cisco_r1.0.0.md#3-igmp-snooping).
 
 Step 5 — The join was held by smcroute or an application that has exited. The
 kernel only answers queries for groups that an open socket (or an `autojoin`

@@ -161,6 +161,20 @@ flowchart TB
 also selects the source at membership level. A successful join alone does not
 prove the sender is active or that all upstream network configuration is correct.
 
+### Why a joined feed can still be missing
+
+| Concept | Plain meaning |
+|---|---|
+| Host firewall | Can block data or membership messages before mcgw receives them |
+| Reverse-path filtering | Linux may reject IPv4 input whose sender does not match the expected return interface |
+| Membership infrastructure | Querier/snooping and version compatibility affect distribution; a local join is not an end-to-end guarantee |
+| Receive-buffer loss | Traffic can arrive faster than Linux/mcgw can drain it; requested buffer space may exceed what the host allows |
+| Sender hop limit | Traffic may be unable to cross routers to reach mcgw |
+| Duplicates | Networks, reflectors, or overlapping gateways can produce repeated messages; v1 has no general payload deduplication |
+
+See [deployment planning](mcgw-deployment.md) and
+[ingress troubleshooting](mcgw-troubleshooting.md#joined-but-no-input).
+
 ## 5. Hosts and network interfaces
 
 | Term | Meaning |
@@ -468,20 +482,6 @@ sudo journalctl -u mcgw -f
 
 Omit `-f` to review existing logs. Journal access may not require `sudo` for an
 authorized account. Log retention follows host journald policy.
-
-### Why a joined feed can still be missing
-
-| Concept | Plain meaning |
-|---|---|
-| Host firewall | Can block data or membership messages before mcgw receives them |
-| Reverse-path filtering | Linux may reject IPv4 input whose sender does not match the expected return interface |
-| Membership infrastructure | Querier/snooping and version compatibility affect distribution; a local join is not an end-to-end guarantee |
-| Receive-buffer loss | Traffic can arrive faster than Linux/mcgw can drain it; requested buffer space may exceed what the host allows |
-| Sender hop limit | Traffic may be unable to cross routers to reach mcgw |
-| Duplicates | Networks, reflectors, or overlapping gateways can produce repeated messages; v1 has no general payload deduplication |
-
-See [deployment planning](mcgw-deployment.md) and
-[ingress troubleshooting](mcgw-troubleshooting.md#joined-but-no-input).
 
 ## Putting it together
 

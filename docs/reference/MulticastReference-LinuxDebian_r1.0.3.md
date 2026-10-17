@@ -146,9 +146,8 @@ Physical client (VLAN 2601)
 
 Multicast is intra-VLAN only. No inter-VLAN multicast routing is required.
 Multicast group addresses are in the 239.0.0.0/8 administratively scoped range.
-The Cisco switches handle IGMP snooping and querier duties as described in
-MulticastReference-Cisco_r1.0.0.md. The Proxmox bridge is configured to be
-according to the lab's deliberate flooding policy. A working snooping
+The Cisco switches handle IGMP snooping and querier duties as described in the
+[Cisco guide](MulticastReference-Cisco_r1.0.0.md). The Proxmox bridge follows the lab's deliberate flooding policy. A working snooping
 configuration is also valid; guest socket membership remains separate.
 
 ---
@@ -2283,10 +2282,11 @@ to the per-socket limit. Host-wide limits come from elsewhere:
   driver puts it in all-multicast mode. This is correct but costs CPU. Check
   with `ip -d link show eth1` (look for `ALLMULTI`).
 - **The Proxmox bridge's snooping table** (`multicast_hash_max`). It applies
-  only while snooping is on. With `bridge-mcsnooping 0`, as recommended in
-  section 2.3, the bridge tracks no groups and this limit cannot be hit.
-- **The Cisco switches' IGMP snooping table.** See
-  MulticastReference-Cisco_r1.0.0.md.
+  only while snooping is on. With `bridge-mcsnooping 0` (the flooding
+  policy shown in section 2.3), the bridge tracks no groups and this limit
+  cannot be hit.
+- **The Cisco switches' IGMP snooping table.** See the
+  [Cisco guide](MulticastReference-Cisco_r1.0.0.md).
 
 Raise the per-socket limit when one application must join many groups. Persist
 in `/etc/sysctl.d/99-multicast.conf`:

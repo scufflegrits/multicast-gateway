@@ -130,9 +130,8 @@ Physical client (VLAN 2601)
 
 Multicast is intra-VLAN only. No inter-VLAN multicast routing is required.
 Multicast group addresses are in the 239.0.0.0/8 administratively scoped range.
-The Cisco switches handle IGMP snooping and querier duties as described in
-MulticastReference-Cisco_r1.0.0.md. The Proxmox bridge is configured to be
-configured according to the explicit snooping/flooding policy in [Debian/Proxmox guide](MulticastReference-LinuxDebian_r1.0.3.md).
+The Cisco switches handle IGMP snooping and querier duties as described in the
+[Cisco guide](MulticastReference-Cisco_r1.0.0.md). The Proxmox bridge follows the explicit snooping/flooding policy in [Debian/Proxmox guide](MulticastReference-LinuxDebian_r1.0.3.md).
 
 All commands in this guide are run in an elevated PowerShell session unless
 otherwise noted. To open an elevated PowerShell session:
@@ -447,8 +446,9 @@ tshark -i "Ethernet 3" -f "igmp or host 239.1.1.1" -n
 ```
 
 Start the application and observe which tshark session shows activity. If
-traffic appears on Ethernet 3 and not Ethernet 2, the routing table is
-selecting the wrong interface. Apply Mechanism 1 or 2 above to correct it.
+traffic appears on Ethernet 3 and not Ethernet 2, the wrong interface is being
+used. Inspect both the application's socket interface settings (sections 6.1
+and 7.2) and the routing table before applying Mechanism 1 or 2 above.
 
 #### Recommendation for This Environment
 

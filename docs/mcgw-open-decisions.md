@@ -65,7 +65,7 @@ replace the agreed [architecture](architecture.md).
 |---|---|
 | Status | Open |
 | Decision gate | Before config/status implementation |
-| Current position | Readiness reflects current local usability of required receivers/sinks, independently of liveness and traffic freshness. “Required” has no frozen configuration definition. |
+| Current position | Readiness reflects current local usability of required receivers/sinks, independently of liveness and traffic freshness. “Required” has no frozen configuration definition. Interim rule: every configured ingress receiver and sink is required for aggregate readiness ([architecture §5](architecture.md#health-and-status)); an optional-component policy remains an open alternative. |
 | Options and tradeoffs | Treat all configured components as required; or add explicit per-route/per-sink required policy. Optional outputs improve partial-service reporting but add policy complexity. |
 | Evidence needed | Define defaults, aggregate HTTP status codes, partial failures, optional-component events, and startup interaction with OD-01. A failed sink must not stop healthy sinks. |
 | Context | Architecture §5; review D7 |
