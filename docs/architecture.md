@@ -757,6 +757,7 @@ tracks alternatives, tradeoffs, evidence, gates, status, and resolutions.
 | Future redundancy requirements | [OD-13](mcgw-open-decisions.md#od-13) |
 | Conditional output QoS and observability qualification | [OD-14](mcgw-open-decisions.md#od-14), [OD-15](mcgw-open-decisions.md#od-15) |
 | Test-only fault injection; static local-cycle definition | [OD-16](mcgw-open-decisions.md#od-16), [OD-17](mcgw-open-decisions.md#od-17) |
+| Go toolchain and version policy | [OD-18](mcgw-open-decisions.md#od-18) |
 
 ### Contracts to finish before implementation
 

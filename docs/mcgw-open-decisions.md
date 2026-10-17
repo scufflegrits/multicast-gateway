@@ -44,6 +44,7 @@ replace the agreed [architecture](architecture.md).
 | [OD-15](#od-15) | Metrics names and port qualification | Before observability schema freeze | Open |
 | [OD-16](#od-16) | Test-only fault-injection hooks | Before data-path implementation | Resolved |
 | [OD-17](#od-17) | Static local-cycle definition | Before config validation implementation | Resolved |
+| [OD-18](#od-18) | Go toolchain and version policy | Before daemon build and packaging setup | Open |
 
 ## OD-01
 
@@ -308,6 +309,21 @@ replace the agreed [architecture](architecture.md).
 | Tests | [T-LOOP-01](mcgw-test-plan.md#life-and-loop--startup-validation-and-local-loops) |
 | Context | Test-plan gap G6; architecture §6 local-loop guard |
 | Resolution | 2026-10-17: option C with A as a warning. No static cycle rejection; validation warns when a sink targets a local address (including loopback) on a configured route port; the runtime `self_loop` guard and operator responsibility for external cycles remain. Recorded in architecture §6 "Static". Confirm the destination-check assumption with T-MCI-01 / T-MCI-03 when OD-09 runs |
+
+## OD-18
+
+**Go toolchain and version policy**
+
+| Field | Record |
+|---|---|
+| Status | Open |
+| Decision gate | Before daemon build and packaging setup |
+| Current position | Implementation direction is Go first. Test tools and prototypes declare `go 1.22` and are checked with Go 1.27.2. No minimum Go version or toolchain source is set for the daemon |
+| Options and tradeoffs | Build with each distro's packaged Go (Debian 13 ships 1.24.4; RHEL versions vary by minor release), which fits distro packaging but lags security fixes; or pin an official Go toolchain (`go.mod` `toolchain` line or release builds), which gives current fixes and identical binaries on both distros but sits outside distro packaging; or a hybrid with a declared minimum plus a pinned release toolchain |
+| Evidence needed | Packaged Go versions on the target RHEL 9/10 releases; govulncheck results per candidate toolchain; distro packaging expectations (deb/rpm build from source versus shipped binary); how security updates will be applied |
+| Tests | govulncheck and the full check suite run with each candidate toolchain |
+| Context | Test tool setup ([test/README.md](../test/README.md#go-versions)); GO-2026-4971 reported with Go 1.24.4 |
+| Resolution | Pending; test tools keep the 1.22 minimum meanwhile |
 
 ## Deferred feature design
 

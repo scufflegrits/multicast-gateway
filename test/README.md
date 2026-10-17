@@ -14,11 +14,27 @@ there is a daemon to install, building on
 | Machine | A dedicated VM or lab host. Tests create network namespaces and need root; do not use a production host |
 | Access | `sudo`, and internet access for packages and `git clone` |
 | Kernel | Any supported kernel for these releases; record the version, as results are per kernel |
-| Go | 1.22 or newer (distro packages are expected to qualify; check with `go version`) |
+| Go | 1.22 or newer to build; 1.25.10 or newer recommended (see [Go versions](#go-versions)) |
 
 The environment lives entirely in network namespaces prefixed `mcgw-`. It does
 not change host interfaces, routes or firewall rules. Each namespace has its own
 netfilter state, so host firewalld/nftables rules do not filter traffic inside it.
+
+## Go versions
+
+| Item | Version | Notes |
+|---|---|---|
+| Minimum to build | 1.22 | From `go.mod`; verified with Go 1.22.12 |
+| Recommended | 1.25.10 or newer | Clears govulncheck finding GO-2026-4971 (Windows-only, not reachable on Linux) |
+| Checked with | 1.27.2 | `gofmt`, `go vet`, golangci-lint and govulncheck clean |
+| Debian 13 `golang-go` | 1.24.4 | Verified on a Debian 13 machine; builds, but govulncheck reports GO-2026-4971 |
+| RHEL 9 `golang` | Not yet recorded | Varies by RHEL minor release; record `dnf info golang` and `go version` on the test machine |
+| RHEL 10 `golang` | Not yet recorded | As for RHEL 9 |
+
+Each OD-09 results file records the Go version used, so the RHEL rows can be
+filled in from the first RHEL runs. These versions apply to the test tools and
+prototypes only; the daemon's Go version policy is open
+([OD-18](../docs/mcgw-open-decisions.md#od-18)).
 
 ## 1. Install packages
 
