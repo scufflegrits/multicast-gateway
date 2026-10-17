@@ -315,7 +315,7 @@ flowchart TB
 flowchart TB
     RX["Application receives datagram<br/>count received packets / payload bytes"]:::process
     VALID{"Complete datagram?<br/>Correct group / ingress?<br/>Source and local-feedback policy?<br/>Within payload limit?"}:::process
-    REJECT["Reject once with exclusive reason<br/>truncated, wrong_ingress / wrong_destination,<br/>source_filtered, self_loop, oversize"]:::failure
+    REJECT["Reject once with exclusive reason<br/>in order: truncated, wrong_ingress,<br/>wrong_destination, oversize,<br/>source_filtered, self_loop"]:::failure
     FAN["Accept for fan-out<br/>offer once per configured sink"]:::process
     AVAILABLE{"Sink locally available?"}:::control
     UNAVAILABLE["Drop new offer<br/>sink_unavailable"]:::failure
@@ -358,7 +358,7 @@ contract is frozen. Count each offer's terminal outcome exactly once.
 | Scope | Required evidence |
 |---|---|
 | Route | Received packets/bytes, exclusive rejections, fan-out accepted |
-| Rejection precedence | A rejected datagram counts exactly one reason: the first failing check in the order `truncated`, `wrong_ingress` / `wrong_destination`, `oversize`, `source_filtered`, `self_loop` |
+| Rejection precedence | A rejected datagram counts exactly one reason: the first failing check in the order `truncated`, `wrong_ingress`, `wrong_destination`, `oversize`, `source_filtered`, `self_loop`. The arrival interface is checked before the destination, so locally originated traffic (delivered through loopback) counts as `wrong_ingress` |
 | Oversize versus truncated | `oversize`: payload larger than the configured maximum, however it is detected (returned length or kernel payload-truncation flag). `truncated`: ancillary (control) data was truncated, so ingress interface or destination cannot be validated. Neither is ever forwarded |
 | Sink | Offered, submitted packets/bytes, failed, dropped by reason, pending |
 | Kernel | Available receive-overflow observations; separate from application drops |
@@ -693,7 +693,7 @@ Mechanism references: [review S2, S9, S11, S16, S24](architecture-review.md#appe
 
 | Mechanism | Boundary |
 |---|---|
-| Static | No static cycle rejection: a single configuration cannot form a cycle (multicast in, unicast out; unicast reaching a receive socket is rejected as `wrong_destination`). Load and reload warn when a sink targets a local address, including loopback, on a configured route port ([OD-17](mcgw-open-decisions.md#od-17)) |
+| Static | No static cycle rejection: a single configuration cannot form a cycle (multicast in, unicast out; unicast or broadcast reaching a receive socket is never forwarded: depending on the bind it is not delivered at all, or is rejected as `wrong_destination`, or as `wrong_ingress` when it originates on the host and arrives through loopback). Load and reload warn when a sink targets a local address, including loopback, on a configured route port ([OD-17](mcgw-open-decisions.md#od-17)) |
 | Runtime | Compare sources with registered actual local sink endpoints; count configured feedback rejections as `self_loop` |
 | Endpoint tracking | Resolve wildcard binds against relevant local addresses; update on interface changes and reload overlap |
 | Legitimate local sender | Explicit guard policy; avoid rejecting every bind merely because a route accepts any source |

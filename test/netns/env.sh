@@ -61,15 +61,24 @@ up() {
     addr mcgw-gw eth3 10.0.30.1/24
     addr mcgw-dstb eth1 10.0.30.6/24
 
-    # Loose reverse-path filtering in GW so results do not depend on distro defaults.
+    # Pin GW settings so results do not depend on distro defaults or on values a
+    # host with net.core.devconf_inherit_init_net=1 would pass into new namespaces:
+    # loose reverse-path filtering, and IGMPv3 so source-specific joins are visible
+    # on the wire (the test plan's "GW forced to IGMPv3").
     for key in all default eth0 eth1 eth2 eth3; do
         nsx mcgw-gw sysctl -qw "net.ipv4.conf.$key.rp_filter=2"
+        nsx mcgw-gw sysctl -qw "net.ipv4.conf.$key.force_igmp_version=3"
     done
     echo "ENV up: ${MCGW_NAMESPACES[*]}"
 }
 
+# down removes every mcgw- namespace (including stray ones from older layouts,
+# which would otherwise make 'up' refuse forever) after stopping processes left
+# inside, since a running process keeps a deleted namespace alive.
 down() {
-    for ns in "${MCGW_NAMESPACES[@]}"; do
+    local ns
+    for ns in $(ip netns list | awk '/^mcgw-/ {print $1}'); do
+        ip netns pids "$ns" 2>/dev/null | xargs -r kill 2>/dev/null || true
         ip netns del "$ns" 2>/dev/null || true
     done
     echo "ENV down"
@@ -80,10 +89,11 @@ status() {
     for ns in "${MCGW_NAMESPACES[@]}"; do
         ip netns list | grep -q "^$ns\b" || continue
         echo "== $ns"
-        ip -n "$ns" -br addr show | grep -v '^lo '
+        ip -n "$ns" -br addr show | grep -v '^lo ' || true
     done
-    echo "== mcgw-gw rp_filter"
-    nsx mcgw-gw sysctl net.ipv4.conf.all.rp_filter net.ipv4.conf.eth0.rp_filter
+    echo "== mcgw-gw rp_filter and force_igmp_version"
+    nsx mcgw-gw sysctl net.ipv4.conf.all.rp_filter net.ipv4.conf.eth0.rp_filter \
+        net.ipv4.conf.eth0.force_igmp_version 2>/dev/null || true
 }
 
 require_root

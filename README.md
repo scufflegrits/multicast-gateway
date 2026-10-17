@@ -6,8 +6,9 @@ hosts or VMs at independent sites.
 
 **Status:** agreed design direction; implementation and prototype validation
 remain open. This repository contains design documents, a proposed test plan,
-and documentation-checking scripts. No released daemon or performance guarantee
-is claimed.
+a network-namespace test environment with small test tools, the OD-09 socket
+isolation prototype (not yet run on the lab machines) and documentation-checking
+scripts. No released daemon or performance guarantee is claimed.
 
 ## Contents
 
@@ -43,6 +44,7 @@ only; that narrower guide coverage does not change the planned dual-stack design
 | Understand or implement the design | [Architecture](docs/architecture.md) | Forwarding contracts, lifecycle diagrams, rationale and validation gates |
 | Resolve implementation choices | [Open decisions](docs/mcgw-open-decisions.md) | Current positions, alternatives, evidence needed and recorded resolutions |
 | Plan validation before code | [Test plan](docs/mcgw-test-plan.md) | Proposed unit, integration, lab and qualification cases; traceability, blockers and contract gaps |
+| Run tests and prototypes | [Test machine setup](test/README.md) | Prepare a Debian 13 or RHEL 9/10 machine and run the OD-09 prototype |
 | Plan a deployment | [Deployment planning](docs/mcgw-deployment.md) | Host/network prerequisites, service integration and site qualification |
 | Diagnose missing traffic | [Troubleshooting](docs/mcgw-troubleshooting.md) | Checks, retained evidence and next actions |
 | Check platform details | [Platform references](docs/reference/README.md) | IPv4-only Cisco, Debian/Proxmox, RHEL/VMware and Windows guides |

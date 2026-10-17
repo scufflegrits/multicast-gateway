@@ -46,8 +46,10 @@ func main() {
 	termination, complete := "", false
 	enc := json.NewEncoder(os.Stdout)
 	buf := make([]byte, 65536)
+	// Ordering is tracked per source, so interleaved senders are not counted as
+	// reordering; a repeated or lower sequence from the same source counts once.
 	received, bytes, outOfOrder := 0, 0, 0
-	var last int64 = -1
+	last := map[string]int64{}
 	sources := map[string]int{}
 	for {
 		n, src, err := conn.ReadFromUDP(buf)
@@ -60,14 +62,15 @@ func main() {
 		}
 		received++
 		bytes += n
-		sources[src.String()]++
+		key := src.String()
+		sources[key]++
 		seq := int64(-1)
 		if n >= 8 {
 			seq = int64(binary.BigEndian.Uint64(buf[0:8]))
-			if seq <= last {
+			if prev, seen := last[key]; seen && seq <= prev {
 				outOfOrder++
 			}
-			last = seq
+			last[key] = seq
 		}
 		if *lines {
 			_ = enc.Encode(map[string]any{"seq": seq, "len": n, "src": src.String()})
@@ -75,7 +78,7 @@ func main() {
 	}
 	if err := enc.Encode(map[string]any{
 		"complete": complete, "termination": termination,
-		"tool": "mcrecv", "listen": addr.String(), "received": received,
+		"tool": "mcrecv", "listen": conn.LocalAddr().String(), "received": received,
 		"bytes": bytes, "out_of_order": outOfOrder, "sources": sources,
 	}); err != nil {
 		fail("write summary: %v", err)

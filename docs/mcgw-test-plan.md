@@ -56,20 +56,24 @@ reach the behavior.
 ## Shared environment
 
 Integration cases reuse one topology, `ENV`. Addresses follow the architecture's
-configuration example. It is implemented by `test/netns/env.sh`; machine setup is
-in [test/README.md](../test/README.md).
+configuration example. `test/netns/env.sh` implements the IPv4 topology (namespaces
+`mcgw-src`, `mcgw-src2`, `mcgw-gw`, `mcgw-net`, `mcgw-dsta`, `mcgw-dstb`,
+`mcgw-dstc`); the mcgw output pipe, `NOTIFY_SOCKET` and `ENV6` are future harness
+work. Machine setup is in [test/README.md](../test/README.md).
 
 ```text
 ENV
   netns SRC:  s0 192.168.10.20/24, .21/24 (secondary)   <-veth->  GW eth0 192.168.10.1/24
   netns SRC2: s0 192.168.11.20/24                        <-veth->  GW eth2 192.168.11.1/24
   netns NET:  bridge br0
-                GW eth1   10.0.20.1/24  (egress, default route for 10.0.20.0/24)
+                GW eth1   10.0.20.1/24  (egress; connected route only)
                 DST_A     10.0.20.5/24
                 DST_B     10.0.20.6/24
                 DST_C     10.0.20.7/24
-  GW eth3 10.0.30.1/24  <-veth->  DST_B second address 10.0.30.6 (constrained-egress path)
+  GW eth3 10.0.30.1/24  <-veth->  DST_B eth1 10.0.30.6/24 (constrained-egress path)
   SRC, SRC2: route 239.0.0.0/8 and 232.0.0.0/8 via s0
+  br0: multicast snooping off, no querier
+  GW: rp_filter=2 (loose) and force_igmp_version=3 on all interfaces
   mcgw runs in GW with stdout/stderr on a harness-controlled pipe
   NOTIFY_SOCKET points at a harness socket that records systemd notifications
 
@@ -90,7 +94,7 @@ Helper vocabulary used by the cases:
 | `link(iface, up|down)`, `addr(iface, add|del, a)` | Interface changes |
 | `reload(cfg)`, `term()` | Replace config and send SIGHUP; send SIGTERM |
 | `notified()` | Messages received on the harness notify socket |
-| `wait_until(cond, T)` | Poll until true or fail after `T` |
+| `wait_until(cond, T)` | Poll until true or fail after `T` (the shell helper in `test/netns/lib.sh` takes the timeout first) |
 
 ## Case template
 
@@ -742,7 +746,8 @@ ACTION  mcgw check-config; then mcgw run; then reload(same cfg)
 EXPECT  check-config exits 0 with one warning each for L and M; none for N
         run and reload start normally and repeat the warnings
         traffic to 239.1.1.1:3000: nothing sent by L or M re-enters R1 as forwarded input
-          (any arrival at a receive socket counted wrong_destination)
+          (any arrival at a receive socket is rejected: wrong_ingress for this
+          local-origin traffic, which arrives through loopback)
 ```
 
 ```text

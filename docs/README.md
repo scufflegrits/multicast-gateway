@@ -1,7 +1,7 @@
 # mcgw — multicast gateway
 
 mcgw is a planned Linux service that receives multicast UDP traffic and forwards
-unchanged payloads to configured unicast receivers. It lets an existing multicast
+unchanged payloads to configured unicast destinations. It lets an existing multicast
 feed reach systems on other networks without requiring those systems to join
 the original multicast group.
 
@@ -13,7 +13,7 @@ remain open. Features below describe the intended v1, not a released product.
 | Topic | Overview |
 |---|---|
 | Input | IPv4 or IPv6 multicast; any-source or source-specific membership |
-| Output | One or more unicast UDP receivers per configured feed; same IP family as input |
+| Output | One or more unicast UDP destinations per configured feed; same IP family as input |
 | Interfaces | Receive and send through one interface or separate interfaces |
 | Payloads | Preserve bytes and datagram boundaries; no application-protocol translation |
 | Example uses | Simulation, sensor/telemetry, and video feeds whose receivers understand the original payload |
@@ -42,7 +42,7 @@ prototype/OS qualification gates; none is a tested-support claim.
 
 | Question | Answer |
 |---|---|
-| Does it work with one receiver? | Yes; additional receivers are optional |
+| Does it work with one destination? | Yes; additional destinations are optional |
 | What does successful forwarding mean? | Linux accepted a complete outbound UDP datagram into the local socket path |
 | Does it test the destination before sending? | No; it checks local forwarding conditions and relies on Linux routing |
 | Does it confirm destination receipt or processing? | No; local submission is the confirmation boundary |

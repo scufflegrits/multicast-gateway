@@ -29,12 +29,14 @@ nsx() {
     ip netns exec "$ns" "$@"
 }
 
-# wait_until SECONDS COMMAND... polls until the command succeeds.
+# wait_until SECONDS COMMAND... polls every 0.2 s until the command succeeds,
+# for at least SECONDS. It counts attempts rather than using $SECONDS, which has
+# one-second resolution and could give up almost a second early.
 wait_until() {
-    local deadline=$((SECONDS + $1))
+    local tries=$(($1 * 5 + 1)) # SECONDS*5 sleeps of 0.2 s between attempts
     shift
     until "$@"; do
-        ((SECONDS < deadline)) || return 1
+        ((--tries > 0)) || return 1
         sleep 0.2
     done
 }

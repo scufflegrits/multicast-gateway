@@ -54,6 +54,9 @@ func main() {
 	if *maxDatagram < 0 || *maxDatagram > 65507 {
 		fail("-max must be between 0 and 65507")
 	}
+	if *port < 1 || *port > 65535 {
+		fail("-port must be between 1 and 65535")
+	}
 	group := net.ParseIP(*groupS).To4()
 	if group == nil || !group.IsMulticast() {
 		fail("invalid -group %q", *groupS)
@@ -69,7 +72,7 @@ func main() {
 		}
 	}
 
-	fd, err := openSocket(group, *port, ifi, source, *bind, *mcall)
+	fd, mcallEffective, err := openSocket(group, *port, ifi, source, *bind, *mcall)
 	if err != nil {
 		fail("%v", err)
 	}
@@ -117,26 +120,21 @@ func main() {
 		key := origin{Dst: ipString(dst), IfIndex: ifindex, Src: src.IP.String(), Verdict: v}
 		counts[key]++
 		if *lines {
+			// len is the number of bytes copied, capped at -max+1; kernel_trunc
+			// marks datagrams that were larger than the read buffer.
 			_ = enc.Encode(map[string]any{"name": *name, "dst": key.Dst, "ifindex": ifindex,
-				"src": src.String(), "len": n, "seq": seq(buf[:min(n, len(buf))]), "verdict": v})
+				"src": src.String(), "len": n, "kernel_trunc": flags&syscall.MSG_TRUNC != 0,
+				"seq": seq(buf[:min(n, len(buf))]), "verdict": v})
 		}
 	}
 
-	origins := make([]origin, 0, len(counts))
-	for k, c := range counts {
-		k.Count = c
-		origins = append(origins, k)
-	}
-	sort.Slice(origins, func(i, j int) bool {
-		a, b := origins[i], origins[j]
-		return fmt.Sprint(a.Dst, a.IfIndex, a.Src, a.Verdict) < fmt.Sprint(b.Dst, b.IfIndex, b.Src, b.Verdict)
-	})
 	if err := enc.Encode(map[string]any{
 		"complete": complete, "termination": termination,
 		"tool": "od09-isolation", "name": *name, "go": runtime.Version(),
 		"options": map[string]any{"group": group.String(), "port": *port, "iface": ifi.Name,
-			"ifindex": ifi.Index, "source": *sourceS, "bind": *bind, "mcall": *mcall, "max": *maxDatagram},
-		"received": received, "foreign_delivered": foreign, "verdicts": verdicts, "origins": origins,
+			"ifindex": ifi.Index, "source": *sourceS, "bind": *bind, "mcall": *mcall,
+			"mcall_effective": mcallEffective, "reuseaddr": true, "max": *maxDatagram},
+		"received": received, "foreign_delivered": foreign, "verdicts": verdicts, "origins": sortOrigins(counts),
 	}); err != nil {
 		fail("write summary: %v", err)
 	}
@@ -145,12 +143,42 @@ func main() {
 	}
 }
 
-// openSocket creates the receive socket with the selected isolation options.
-func openSocket(group net.IP, port int, ifi *net.Interface, source net.IP, bind, mcall string) (int, error) {
-	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM|syscall.SOCK_CLOEXEC, syscall.IPPROTO_UDP)
-	if err != nil {
-		return -1, fmt.Errorf("socket: %w", err)
+// sortOrigins returns the per-origin counts in a deterministic order, comparing
+// fields individually so different origins can never share a sort key.
+func sortOrigins(counts map[origin]int) []origin {
+	origins := make([]origin, 0, len(counts))
+	for k, c := range counts {
+		k.Count = c
+		origins = append(origins, k)
 	}
+	sort.Slice(origins, func(i, j int) bool {
+		a, b := origins[i], origins[j]
+		switch {
+		case a.Dst != b.Dst:
+			return a.Dst < b.Dst
+		case a.IfIndex != b.IfIndex:
+			return a.IfIndex < b.IfIndex
+		case a.Src != b.Src:
+			return a.Src < b.Src
+		}
+		return a.Verdict < b.Verdict
+	})
+	return origins
+}
+
+// openSocket creates the receive socket with the selected isolation options and
+// returns it with the effective IP_MULTICAST_ALL value read back from the kernel.
+func openSocket(group net.IP, port int, ifi *net.Interface, source net.IP, bind, mcall string) (fd, mcallEffective int, err error) {
+	fd, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM|syscall.SOCK_CLOEXEC, syscall.IPPROTO_UDP)
+	if err != nil {
+		return -1, 0, fmt.Errorf("socket: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = syscall.Close(fd)
+			fd = -1
+		}
+	}()
 	set := func(level, opt, v int, label string) error {
 		if err := syscall.SetsockoptInt(fd, level, opt, v); err != nil {
 			return fmt.Errorf("%s: %w", label, err)
@@ -159,19 +187,19 @@ func openSocket(group net.IP, port int, ifi *net.Interface, source net.IP, bind,
 	}
 	// SO_REUSEADDR lets several receivers share the port, as the test cases require.
 	if err := set(syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1, "SO_REUSEADDR"); err != nil {
-		return -1, err
+		return -1, 0, err
 	}
 	if err := set(syscall.IPPROTO_IP, syscall.IP_PKTINFO, 1, "IP_PKTINFO"); err != nil {
-		return -1, err
+		return -1, 0, err
 	}
 	switch mcall {
 	case "default":
 	case "0", "1":
 		if err := set(syscall.IPPROTO_IP, ipMulticastAll, int(mcall[0]-'0'), "IP_MULTICAST_ALL"); err != nil {
-			return -1, err
+			return -1, 0, err
 		}
 	default:
-		return -1, fmt.Errorf("invalid -mcall %q", mcall)
+		return -1, 0, fmt.Errorf("invalid -mcall %q", mcall)
 	}
 
 	sa := &syscall.SockaddrInet4{Port: port}
@@ -180,31 +208,35 @@ func openSocket(group net.IP, port int, ifi *net.Interface, source net.IP, bind,
 		copy(sa.Addr[:], group)
 	case "wildcard":
 	default:
-		return -1, fmt.Errorf("invalid -bind %q", bind)
+		return -1, 0, fmt.Errorf("invalid -bind %q", bind)
 	}
 	if err := syscall.Bind(fd, sa); err != nil {
-		return -1, fmt.Errorf("bind %s:%d: %w", bind, port, err)
+		return -1, 0, fmt.Errorf("bind %s:%d: %w", bind, port, err)
 	}
 
 	if source == nil {
 		mreq := &syscall.IPMreqn{Ifindex: int32(ifi.Index)}
 		copy(mreq.Multiaddr[:], group)
 		if err := syscall.SetsockoptIPMreqn(fd, syscall.IPPROTO_IP, syscall.IP_ADD_MEMBERSHIP, mreq); err != nil {
-			return -1, fmt.Errorf("IP_ADD_MEMBERSHIP: %w", err)
+			return -1, 0, fmt.Errorf("IP_ADD_MEMBERSHIP: %w", err)
 		}
-		return fd, nil
+	} else {
+		// struct ip_mreq_source { imr_multiaddr; imr_interface; imr_sourceaddr; }
+		local, err := ifaceAddr(ifi)
+		if err != nil {
+			return -1, 0, err
+		}
+		mreq := make([]byte, 0, 12)
+		mreq = append(append(append(mreq, group...), local...), source...)
+		if err := syscall.SetsockoptString(fd, syscall.IPPROTO_IP, syscall.IP_ADD_SOURCE_MEMBERSHIP, string(mreq)); err != nil {
+			return -1, 0, fmt.Errorf("IP_ADD_SOURCE_MEMBERSHIP: %w", err)
+		}
 	}
-	// struct ip_mreq_source { imr_multiaddr; imr_interface; imr_sourceaddr; }
-	local, err := ifaceAddr(ifi)
-	if err != nil {
-		return -1, err
+	// Record what the kernel applied, not what was requested ("default" is 1 on Linux).
+	if mcallEffective, err = syscall.GetsockoptInt(fd, syscall.IPPROTO_IP, ipMulticastAll); err != nil {
+		return -1, 0, fmt.Errorf("read back IP_MULTICAST_ALL: %w", err)
 	}
-	mreq := make([]byte, 0, 12)
-	mreq = append(append(append(mreq, group...), local...), source...)
-	if err := syscall.SetsockoptString(fd, syscall.IPPROTO_IP, syscall.IP_ADD_SOURCE_MEMBERSHIP, string(mreq)); err != nil {
-		return -1, fmt.Errorf("IP_ADD_SOURCE_MEMBERSHIP: %w", err)
-	}
-	return fd, nil
+	return fd, mcallEffective, nil
 }
 
 // verdict applies the architecture §4 rejection precedence.

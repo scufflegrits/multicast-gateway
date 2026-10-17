@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""Process checks: loopback listeners only; oversized sends fail before transmission."""
+"""Process checks: loopback listeners only; no packets leave the host.
+
+Run: python3 test/test_tools.py (needs Go on PATH)
+"""
 import json
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -11,6 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@unittest.skipUnless(shutil.which('go'), 'Go toolchain not on PATH')
 class ToolProcesses(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -52,14 +57,32 @@ class ToolProcesses(unittest.TestCase):
                     child.communicate()
 
     def test_failed_submission_returns_nonzero_with_summary(self):
-        # IPv4 UDP payload limit is 65507; this never emits an actual packet.
-        result = subprocess.run([str(self.bin / "mcsend"), "-to", "127.0.0.1:9",
-                                 "-n", "1", "-size", "65508", "-rate", "1000"],
+        # Linux udp_sendmsg rejects destination port 0 with EINVAL before
+        # routing, so this never emits a packet.
+        result = subprocess.run([str(self.bin / "mcsend"), "-to", "127.0.0.1:0",
+                                 "-n", "2", "-rate", "1000"],
                                 capture_output=True, text=True, timeout=5, check=False)
         self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("first error", result.stderr)
         summary = json.loads(result.stdout)
         self.assertEqual(summary["sent"], 0)
-        self.assertEqual(summary["errors"], 1)
+        self.assertEqual(summary["errors"], 2)
+        self.assertEqual(summary["n"], 2)
+
+    def test_usage_errors_exit_2(self):
+        for args in (["-to", "127.0.0.1:9", "-size", "65508"],
+                     ["-to", "127.0.0.1:9", "-iface", "no-such-interface"],
+                     ["-to", "127.0.0.1:9", "-rate", "0"]):
+            with self.subTest(args=args):
+                result = subprocess.run([str(self.bin / "mcsend"), *args], capture_output=True,
+                                        text=True, timeout=5, check=False)
+                self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_receiver_reports_bound_port(self):
+        result = subprocess.run([str(self.bin / "mcrecv"), "-listen", "127.0.0.1:0",
+                                 "-duration", "100ms"], capture_output=True, text=True,
+                                timeout=5, check=False)
+        self.assertNotEqual(json.loads(result.stdout)["listen"], "127.0.0.1:0")
 
 
 if __name__ == "__main__":
