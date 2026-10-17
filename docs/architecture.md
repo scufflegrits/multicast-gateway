@@ -452,6 +452,7 @@ built-in HTTP authentication/TLS; do not expose the listener to an untrusted WAN
 | State versus readiness | `unavailable` is a component state; unready means that state fails its readiness check. Illustrative JSON may use `unavailable` without defining a second state machine |
 | Required policy | Pending OD-02, treat every configured ingress receiver/sink as required for aggregate readiness; no optional-component field is promised |
 | Startup policy | Existing fail-start policy remains until OD-01 resolves; bounded initialization waiting remains open |
+| Reload interruption | A changed route interrupted during reload is unready, so aggregate `/readyz` is 503 until it is reactivated or rolled back; unchanged routes stay ready; `/status` names the interrupted components |
 | Rejoin | Stale-triggered rejoin disabled by default; any opt-in behavior requires limits/backoff |
 | Management bounds | Bounded concurrent connections and in-flight requests; finite header-read, read, write and idle timeouts; bounded response size and serialization memory. Numeric limits are OD-12/OD-15 work |
 | Snapshot isolation | Responses are built from a snapshot copied under short-held locks; forwarding, control and reload locks are never held while encoding or writing to a client. A slow or stalled client cannot delay forwarding, interface recovery or reload |
@@ -577,7 +578,7 @@ Mechanism references: [review S2, S9, S11, S16, S24](architecture-review.md#appe
 
 | Mechanism | Boundary |
 |---|---|
-| Static | Reject provable local configuration cycles on every load/reload |
+| Static | Reject provable local configuration cycles on every load/reload; what counts as provable is open ([OD-17](mcgw-open-decisions.md#od-17)) |
 | Runtime | Compare sources with registered actual local sink endpoints; count configured feedback rejections as `self_loop` |
 | Endpoint tracking | Resolve wildcard binds against relevant local addresses; update on interface changes and reload overlap |
 | Legitimate local sender | Explicit guard policy; avoid rejecting every bind merely because a route accepts any source |
@@ -640,6 +641,7 @@ tracks alternatives, tradeoffs, evidence, gates, status, and resolutions.
 | Reload, queue/timer defaults, and benchmark envelope | [OD-11](mcgw-open-decisions.md#od-11), [OD-12](mcgw-open-decisions.md#od-12) |
 | Future redundancy requirements | [OD-13](mcgw-open-decisions.md#od-13) |
 | Conditional output QoS and observability qualification | [OD-14](mcgw-open-decisions.md#od-14), [OD-15](mcgw-open-decisions.md#od-15) |
+| Test-only fault injection; static local-cycle definition | [OD-16](mcgw-open-decisions.md#od-16), [OD-17](mcgw-open-decisions.md#od-17) |
 
 ### Contracts to finish before implementation
 
@@ -652,6 +654,7 @@ tracks alternatives, tradeoffs, evidence, gates, status, and resolutions.
 | Address handling | Exact SSM prefixes/APIs, scopes, family normalization, broadcast classification |
 | Management access | Explicit external binding and operator-provided access controls |
 | Interface state | Administrative/carrier/unknown classification; notification/snapshot reconciliation; delete/recreate identity handling |
+| Test hooks | Fault-injection hooks exist only in test builds and are absent from release binaries ([OD-16](mcgw-open-decisions.md#od-16)) |
 
 ### Benchmark envelope
 

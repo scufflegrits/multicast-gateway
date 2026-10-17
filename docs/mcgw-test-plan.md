@@ -205,7 +205,7 @@ EXPECT  counter(B, submitted) counts every locally accepted datagram
 T-ACC-07  Partial send batches counted exactly
 Checks:   §3 "Send batches"
 Level:    Unit (send-path component with injected short batch results)
-Blocked:  OD-07 (batching chosen at all)
+Blocked:  OD-07 (batching chosen at all); uses a test hook (OD-16)
 Status:   Draft
 
 ACTION  injected batch send returns k of n entries accepted, then an error
@@ -466,7 +466,7 @@ EXPECT  D remains usable and continues via eth1; no sink_unavailable for D
 T-IFR-08  Monitor resynchronizes after notification loss
 Checks:   §5 "Monitoring startup / event loss"
 Level:    Integration (ENV)
-Blocked:  harness method to qualify (forcing netlink overflow)
+Blocked:  harness method to qualify (forcing netlink overflow); test hook allowed (OD-16)
 Status:   Draft
 
 ACTION  burst thousands of address add/delete events on a dummy interface while
@@ -526,6 +526,7 @@ SETUP   R1 -> A and R2 -> B, both with traffic
 ACTION  reload(cfg changing R2's port only)
 EXPECT  R1: no gap at DST_A, counters preserved
         R2: interruption reported with outcome; resumes on the new port
+        readyz() == 503 while R2 is interrupted, naming R2 in /status; 200 after reactivation
 ```
 
 ```text
@@ -539,6 +540,7 @@ SETUP   another process holds 10.0.20.1:8931
 ACTION  reload(cfg adding a sink bound to 10.0.20.1:8931)
 EXPECT  activation failure reported; rollback attempted; status shows restored or
         degraded state and any mixed generations explicitly
+        readyz() == 503 while affected routes are interrupted; 200 only if fully restored
 ```
 
 ```text
@@ -672,6 +674,19 @@ EXPECT  forwarding latency within TOL of baseline; daemon memory bounded
         within each /status snapshot the accounting equations hold
 ```
 
+```text
+T-OBS-09  Control-loop stall reports unhealthy
+Checks:   §5 health table "/healthz"; watchdog progress note
+Level:    Integration (ENV, test build)
+Blocked:  none (uses a test hook, OD-16)
+Status:   Ready
+
+ACTION  test hook stalls the control loop for 3 x watchdog interval
+EXPECT  healthz() == 503 if the server can respond, or no response (never 200)
+        WATCHDOG=1 notifications stop during the stall and resume after it
+        forwarding state after the stall matches the state before it
+```
+
 ## LIFE and LOOP — Startup, validation and local loops
 
 ```text
@@ -717,7 +732,7 @@ EXPECT  READY=1 only after all required resources initialized
 T-LOOP-01  Provable local cycle rejected on load and reload
 Checks:   §6 local-loop guard "Static"
 Level:    Unit and Integration
-Blocked:  gap G6 (definition of a provable local cycle)
+Blocked:  OD-17 (definition of a provable local cycle)
 Status:   Draft
 ```
 
@@ -768,13 +783,13 @@ existing checklists.
 | §4 path-size policy | T-ACC-05, T-LAB-03 | — |
 | §5 startup and readiness notification | T-LIFE-02, T-LIFE-03 | — |
 | §5 interface monitoring | T-IFR-01 .. T-IFR-08 | — |
-| §5 reload and shutdown | T-RLD-01 .. T-RLD-07 | G3 |
-| §5 health, readiness, freshness | T-OBS-01, T-OBS-02 | — |
+| §5 reload and shutdown | T-RLD-01 .. T-RLD-07 | — |
+| §5 health, readiness, freshness | T-OBS-01, T-OBS-02, T-OBS-09 | — |
 | §5 management bounds and snapshot isolation | T-OBS-07, T-OBS-08 | — |
 | §5 journal events and logging isolation | T-OBS-03 .. T-OBS-06, T-LAB-04 | — |
 | §6 validation and CLI | T-LIFE-01, T-MCI-05 | — |
 | §6 receive path and multicast isolation | T-MCI-01 .. T-MCI-06 | — |
-| §6 local-loop guard | T-LOOP-01, T-LOOP-02 | G6 |
+| §6 local-loop guard | T-LOOP-01, T-LOOP-02 | OD-17 |
 | §6 trust and amplification (OD-03) | T-LAB-05 | No integration case until rate policy exists |
 | Kernel receive overflow observations (OD-06) | — | No case yet: needs an overflow-inducing harness and the reporting decision |
 | Service sandbox and privileges (OD-10) | T-LAB-07 | Integration case possible once the unit file exists |
@@ -794,10 +809,11 @@ counts suggest which decisions to resolve first.
 | OD-11 | 5 | Decides reload serialization and transitions |
 | OD-08 | 4 | Logging transport and event fields |
 | OD-10 | 3 | Egress enforcement and permissions |
-| OD-01, OD-02, OD-04, OD-05, OD-06, OD-07 | 1 each | OD-01/OD-02 current positions are used meanwhile |
-| Contract gaps and harness methods | 4 | G6, guard policy, and two harness methods to qualify |
+| OD-01, OD-02, OD-04, OD-05, OD-06, OD-07, OD-17 | 1 each | OD-01/OD-02 current positions are used meanwhile |
+| OD-16 | 0 (3 use it) | Resolved: test-build hooks; listed on the cases that need one |
+| Harness methods and guard policy | 3 | Two harness methods to qualify; local-loop guard policy |
 
-46 cases in total: 41 Ready and 5 Draft; 13 lab and qualification stubs are
+47 cases in total: 42 Ready and 5 Draft; 13 lab and qualification stubs are
 listed separately. OD-12 and OD-15 block the most cases
 but only supply numbers and names, so the first decisions that change test
 behavior are OD-09 and OD-11.
@@ -811,8 +827,8 @@ their row with the location of the resolution.
 |---|---|---|---|
 | G1 | Rejection precedence: when a datagram fails several checks (e.g. disallowed source and oversize), which single exclusive reason is counted is not defined | T-ACC-02, T-ACC-04 | Resolved 2026-10-17: architecture §4 "Rejection precedence" |
 | G2 | `oversize` and `truncated` are both rejection reasons but their difference (configured limit versus read-buffer truncation) is not defined | T-ACC-03 | Resolved 2026-10-17: architecture §4 "Oversize versus truncated"; noted in OD-06 |
-| G3 | What `/readyz` reports while a changed route is interrupted during reload is not specified | T-RLD-04, T-RLD-05 | Open: OD-02 / OD-11 |
+| G3 | What `/readyz` reports while a changed route is interrupted during reload is not specified | T-RLD-04, T-RLD-05 | Resolved 2026-10-17: architecture §5 "Reload interruption"; noted in OD-11 |
 | G4 | Freshness windows are an optional config field, but no decision owns their default or bounds | T-OBS-02 | Resolved 2026-10-17: values owned by OD-12 |
 | G5 | "Bounded transition logs" has no definition of the bound or summary interval | T-OBS-03 | Resolved 2026-10-17: limit shape in architecture §5 "Flapping"; values OD-12, summary format OD-08 |
-| G6 | "Provable local configuration cycle" is not defined: routes receive multicast and sinks send unicast, so the configurations that count as a provable cycle need examples | T-LOOP-01 | Open: architecture §6 local-loop guard |
-| G7 | Some behavior (control-loop stall for `/healthz` 503, partial batches, netlink overflow) cannot be triggered from outside; whether test-only fault-injection hooks are allowed is undecided | T-ACC-07, T-IFR-08, `/healthz` 503 path | Open: new OD or implementation guideline |
+| G6 | "Provable local configuration cycle" is not defined: routes receive multicast and sinks send unicast, so the configurations that count as a provable cycle need examples | T-LOOP-01 | Tracked in OD-17 with options and a recommendation |
+| G7 | Some behavior (control-loop stall for `/healthz` 503, partial batches, netlink overflow) cannot be triggered from outside; whether test-only fault-injection hooks are allowed is undecided | T-ACC-07, T-IFR-08, `/healthz` 503 path | Resolved 2026-10-17: OD-16, test-build hooks only; T-OBS-09 added |

@@ -42,6 +42,8 @@ replace the agreed [architecture](architecture.md).
 | [OD-13](#od-13) | High availability and duplicate traffic | Before any redundant-site deployment | Deferred |
 | [OD-14](#od-14) | Output QoS and hop-limit controls | Confirmed site requirement | Deferred |
 | [OD-15](#od-15) | Metrics names and port qualification | Before observability schema freeze | Open |
+| [OD-16](#od-16) | Test-only fault-injection hooks | Before data-path implementation | Resolved |
+| [OD-17](#od-17) | Static local-cycle definition | Before config validation implementation | Open |
 
 ## OD-01
 
@@ -210,7 +212,7 @@ replace the agreed [architecture](architecture.md).
 |---|---|
 | Status | Open |
 | Decision gate | Before lifecycle implementation |
-| Current position | Unchanged routes continue; changed resources may be interrupted; rollback is best effort. Offers retain original sink identity; overlap fits the allocation budget. Discarded payloads cannot be recovered by rollback. |
+| Current position | Unchanged routes continue; changed resources may be interrupted; rollback is best effort. Offers retain original sink identity; overlap fits the allocation budget. Interrupted changed routes are unready until reactivated (architecture §5 "Reload interruption"). Discarded payloads cannot be recovered by rollback. |
 | Options and tradeoffs | Serialize and coalesce reload requests or reject concurrent requests visibly. Define requests before startup readiness, changed-instance criteria, bounded old-instance drain, and safe dispatch swaps. |
 | Evidence needed | Repeated SIGHUP, half-written/replaced config, failed preparation/rollback, near-budget overlap, sink destination changes, no-op counter continuity, and cleanup of prepared resources. |
 | Tests | [T-RLD-01 to T-RLD-07](mcgw-test-plan.md#rld--reload-and-shutdown), T-ISO-05 |
@@ -275,6 +277,37 @@ replace the agreed [architecture](architecture.md).
 | Evidence needed | Official Prometheus conventions/port registry check; bounded label and reset tests; status/HTTP fixtures; stalled-client and concurrent-scrape fault injection during traffic, reload and recovery |
 | Tests | Names used throughout the [test plan](mcgw-test-plan.md); T-OBS-07, T-OBS-08 |
 | Resolution | Pending; no claim of exclusive registered port ownership |
+
+## OD-16
+
+**Test-only fault-injection hooks**
+
+| Field | Record |
+|---|---|
+| Status | Resolved |
+| Decision gate | Before data-path implementation |
+| Current position | Narrowly scoped fault-injection hooks are allowed in test builds only |
+| Options and tradeoffs | No hooks (some contracts untestable: control-loop stall, partial send batches, netlink overflow); runtime-configurable hooks (risk of enabling them in production); build-time test-only hooks (small code cost, release binaries unaffected) |
+| Evidence needed | Release build contains no hook code paths or configuration; each hook names the contract it exercises |
+| Tests | T-ACC-07, T-IFR-08 and T-OBS-09 in the [test plan](mcgw-test-plan.md) use hooks |
+| Context | Test-plan gap G7 |
+| Resolution | 2026-10-17: build-time test-only hooks. Each hook is minimal, documented against a test case, and excluded from release binaries; no runtime switch enables them. Recorded in architecture §8 "Test hooks" |
+
+## OD-17
+
+**Static local-cycle definition**
+
+| Field | Record |
+|---|---|
+| Status | Open |
+| Decision gate | Before config validation implementation |
+| Current position | Architecture §6 requires rejecting "provable local configuration cycles" but does not define them. Routes receive multicast only and sinks send unicast only, so one mcgw configuration cannot feed its own output back into a route. A unicast datagram reaching a wildcard-bound receive socket is already rejected as `wrong_destination` |
+| Options and tradeoffs | A. Narrow static rule: reject or warn on a sink whose destination is a local address (including loopback) using a configured route port; catches misconfiguration, but the destination check already prevents forwarding. B. Reject every sink to a local address; too strong, because local consumer applications are a legitimate use. C. Withdraw the static guarantee: state that a single configuration cannot form a cycle, rely on the runtime `self_loop` guard, and keep external relays and other instances as operator responsibility. D. Cross-instance checks on one host; out of v1 scope |
+| Recommendation | C, with A as a validation warning rather than a rejection |
+| Evidence needed | Confirm the wildcard-bind and destination-check behavior with T-MCI-01 / T-MCI-03 results (OD-09); owner choice |
+| Tests | [T-LOOP-01](mcgw-test-plan.md#life-and-loop--startup-validation-and-local-loops) |
+| Context | Test-plan gap G6; architecture §6 local-loop guard |
+| Resolution | Pending; current position remains in force |
 
 ## Deferred feature design
 
