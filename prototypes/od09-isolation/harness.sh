@@ -15,10 +15,39 @@ invalid() { echo "INVALID experiment: $*" >&2; return 1; }
 wait_receiver() {
     local pid=$1 file=$2
     wait "$pid" || { invalid "receiver failed: $file"; return 1; }
-    jq -se 'length == 1 and (.[0] | .tool == "od09-isolation" and
-        .complete == true and .termination == "deadline" and
-        (.received | type == "number") and (.verdicts | type == "object") and
-        (.received == ([.verdicts[]] | add // 0)))' "$file" >/dev/null || {
+    jq -se '
+        def count: type == "number" and . >= 0 and . == floor;
+        def own($o): .dst == $o.group and .ifindex == $o.ifindex and
+            ($o.source == "" or .src == $o.source);
+        length == 1 and (.[0] |
+        .tool == "od09-isolation" and .complete == true and .termination == "deadline" and
+        (.name | type == "string") and (.go | type == "string") and
+        (.received | count) and (.foreign_delivered | count) and
+        (.options | type == "object") and
+        (.options.group | type == "string") and (.options.source | type == "string") and
+        (.options.iface | type == "string") and
+        (.options.ifindex | count and . > 0) and
+        (.options.port | count and . > 0 and . <= 65535) and
+        (.options.bind == "group" or .options.bind == "wildcard") and
+        (.options.mcall == "default" or .options.mcall == "0" or .options.mcall == "1") and
+        (.options.mcall_effective == 0 or .options.mcall_effective == 1) and
+        (.verdicts | type == "object") and
+        (.verdicts | to_entries | all(.[];
+            (.value | count) and (.key == "accept" or .key == "truncated" or
+            .key == "wrong_ingress" or .key == "wrong_destination" or
+            .key == "oversize" or .key == "source_filtered"))) and
+        (.origins | type == "array") and
+        (.origins | all(.[]; (.count | count and . > 0) and
+            (.dst | type == "string") and (.src | type == "string") and
+            (.ifindex | count) and (.verdict | type == "string"))) and
+        (.received == ([.verdicts[]] | add // 0)) and
+        (.received == ([.origins[].count] | add // 0)) and
+        (.options as $o | .foreign_delivered ==
+            ([.origins[] | select(own($o) | not) | .count] | add // 0)) and
+        (.options as $o | all(.origins[]; .verdict != "accept" or own($o))) and
+        (. as $r | all(.origins[]; $r.verdicts[.verdict] != null)) and
+        (. as $r | .verdicts | to_entries | all(.[]; . as $v |
+            $v.value == ([$r.origins[] | select(.verdict == $v.key) | .count] | add // 0))))' "$file" >/dev/null || {
         invalid "missing, malformed or incomplete receiver summary: $file"; return 1;
     }
 }
@@ -43,6 +72,14 @@ check_sender() {
 foreign_matches() {
     local file=$1 predicted=$2
     jq -e --argjson n "$predicted" '.foreign_delivered == $n' "$file" >/dev/null
+}
+
+# Compare rejection reasons as well as totals: a wrong reason is evidence to
+# review, even when the aggregate foreign count happens to match.
+rejections_match() {
+    jq -e --argjson expected "$2" '
+        def nonzero: with_entries(select(.value != 0));
+        (.verdicts | del(.accept) | nonzero) == ($expected | nonzero)' "$1" >/dev/null
 }
 
 # mcall_matches FILE succeeds when the effective IP_MULTICAST_ALL read back from
@@ -77,7 +114,7 @@ count_matches() {
 wait_capture() {
     local pid=$1 rc=0
     wait "$pid" || rc=$?
-    # 0: tcpdump exited itself; 124: GNU timeout safety limit reached;
-    # 143: the runner stopped the capture with SIGTERM after the traffic window.
-    [[ $rc == 0 || $rc == 124 || $rc == 143 ]] || { invalid "capture failed (exit $rc)"; return 1; }
+    # stop_captures verifies that capture is alive before requesting shutdown.
+    # 143 is intentional SIGTERM; 124/137 are safety limits, not complete evidence.
+    [[ $rc == 0 || $rc == 143 ]] || { invalid "capture failed (exit $rc)"; return 1; }
 }

@@ -21,6 +21,10 @@ func main() {
 	lines := flag.Bool("lines", false, "print one JSON line per datagram")
 	readyFile := flag.String("ready-file", "", "write readiness marker after socket setup")
 	flag.Parse()
+	// Positional arguments would also hide any flags after them from flag.Parse.
+	if flag.NArg() != 0 {
+		fail("unexpected positional arguments: %q", flag.Args())
+	}
 	if *duration <= 0 {
 		fail("-duration must be positive")
 	}

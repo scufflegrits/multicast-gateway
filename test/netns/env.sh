@@ -75,12 +75,46 @@ up() {
 # down removes every mcgw- namespace (including stray ones from older layouts,
 # which would otherwise make 'up' refuse forever) after stopping processes left
 # inside, since a running process keeps a deleted namespace alive.
-down() {
-    local ns
-    for ns in $(ip netns list | awk '/^mcgw-/ {print $1}'); do
-        ip netns pids "$ns" 2>/dev/null | xargs -r kill 2>/dev/null || true
-        ip netns del "$ns" 2>/dev/null || true
+stop_namespace_processes() {
+    local ns=$1 listing pid attempt
+    local -a members=()
+    listing=$(ip netns pids "$ns") || return 1
+    mapfile -t members < <(printf '%s\n' "$listing")
+    for pid in "${members[@]}"; do
+        [[ -z $pid ]] || kill -TERM "$pid" 2>/dev/null || true
     done
+    # Do not delete the name while surviving processes still pin the namespace.
+    # Re-read membership to include children forked during the grace period.
+    for ((attempt = 0; attempt < 40; attempt++)); do
+        listing=$(ip netns pids "$ns") || return 1
+        [[ -n $listing ]] || return 0
+        if ((attempt == 20)); then
+            mapfile -t members < <(printf '%s\n' "$listing")
+            for pid in "${members[@]}"; do kill -KILL "$pid" 2>/dev/null || true; done
+        fi
+        sleep 0.1
+    done
+    echo "error: processes remain in $ns after TERM/KILL; namespace retained" >&2
+    return 1
+}
+
+down() {
+    local ns listing failed=0
+    # A failed enumeration must never be mistaken for an empty environment.
+    listing=$(ip netns list) || return 1
+    while read -r ns _; do
+        [[ $ns == mcgw-* ]] || continue
+        if ! stop_namespace_processes "$ns"; then
+            echo "error: could not stop processes in $ns; namespace retained" >&2
+            failed=1
+            continue
+        fi
+        if ! ip netns del "$ns"; then
+            echo "error: could not delete namespace $ns" >&2
+            failed=1
+        fi
+    done <<< "$listing"
+    ((failed == 0)) || return 1
     echo "ENV down"
 }
 

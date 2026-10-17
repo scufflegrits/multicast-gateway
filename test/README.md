@@ -162,6 +162,7 @@ so copy anything needed for investigation first.
 | `test/tools/` | `mcsend` (numbered-payload sender) and `mcrecv` (unicast listener) |
 | `test/build.sh` | Builds tools and prototypes into `test/bin/` |
 | `test/test_tools.py` | Process-level regression checks for the tools (loopback only) |
+| `prototypes/od09-isolation/test_harness.py`, `test_runner.py` | Unprivileged harness and runner-lifecycle checks (no namespaces, no traffic) |
 | `prototypes/od09-isolation/results/` | Committed OD-09 run reports |
 | `prototypes/` | Throwaway experiments that produce evidence for open decisions; never imported by mcgw |
 
@@ -174,8 +175,10 @@ socket setup. Per-datagram output remains optional with `-lines`.
 
 `mcsend` exits 1 when any datagram submission fails, printing the first error to
 stderr and keeping its `sent`, `errors`, `n` and `rate` summary, and exits 2 for
-usage errors (for example `-size` above 65507 or an unknown `-iface`). Its success
-means local submission, not receipt. Pacing never bursts to catch up after a stall.
+usage errors (for example `-size` above 65507, `-ttl` outside 0–255, an unknown
+`-iface`, or a stray positional argument, which would otherwise hide later flags). Its success
+means local submission, not receipt. Pacing never bursts to catch up after a stall: after a missed slot the next
+datagram waits a full interval.
 
 The OD-09 runner checks individual child exits, validates summaries and positive
 controls, compares every cell with kernel-semantics predictions, and includes the

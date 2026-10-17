@@ -8,10 +8,55 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"unsafe"
 )
+
+func TestOpenSocketErrorsCloseDescriptor(t *testing.T) {
+	// These cases fail before membership setup and send no traffic. Restricted
+	// sandboxes may forbid even creating an unbound UDP socket.
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM|syscall.SOCK_CLOEXEC, syscall.IPPROTO_UDP)
+	if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		t.Skipf("UDP sockets unavailable: %v", err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Close(fd); err != nil {
+		t.Fatal(err)
+	}
+	countFDs := func() int {
+		t.Helper()
+		entries, err := os.ReadDir("/proc/self/fd")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(entries)
+	}
+	for _, tt := range []struct {
+		name, bind, mcall, wantError string
+		port                         int
+	}{
+		{"invalid multicast-all", "group", "invalid", "invalid -mcall", 3000},
+		{"invalid bind", "invalid", "default", "invalid -bind", 3000},
+		{"bind failure", "wildcard", "default", "bind wildcard:-1", -1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			before := countFDs()
+			for i := 0; i < 5; i++ {
+				fd, _, err := openSocket(net.IPv4(239, 1, 1, 1).To4(), tt.port, nil, nil, tt.bind, tt.mcall)
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) || fd != -1 {
+					t.Fatalf("got fd=%d err=%v, want fd=-1 and %q", fd, err, tt.wantError)
+				}
+			}
+			if after := countFDs(); after != before {
+				t.Fatalf("descriptor count changed after setup failures: before=%d after=%d", before, after)
+			}
+		})
+	}
+}
 
 func TestReceiveTermination(t *testing.T) {
 	for _, tt := range []struct {

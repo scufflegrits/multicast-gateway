@@ -40,3 +40,21 @@ wait_until() {
         sleep 0.2
     done
 }
+
+# Stop direct background children with a finite TERM grace period. Reap every
+# child, including failures, before callers discard their PID ownership list.
+# Callers must not pass previously reaped PIDs or unrelated processes.
+stop_children() {
+    local pid attempt running
+    for pid in "$@"; do kill -TERM "$pid" 2>/dev/null || true; done
+    for ((attempt = 0; attempt < 20; attempt++)); do
+        running=0
+        for pid in "$@"; do
+            if kill -0 "$pid" 2>/dev/null; then running=1; fi
+        done
+        ((running)) || break
+        sleep 0.1
+    done
+    for pid in "$@"; do kill -KILL "$pid" 2>/dev/null || true; done
+    for pid in "$@"; do wait "$pid" 2>/dev/null || true; done
+}

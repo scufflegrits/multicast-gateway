@@ -53,7 +53,9 @@ test/build.sh                                  # as your normal user
 sudo prototypes/od09-isolation/run-mci.sh      # about 5 minutes; use tmux/screen over SSH
 ```
 
-The runner removes any existing `mcgw-` namespaces before starting. Where SELinux
+The runner removes any existing `mcgw-` namespaces before starting. It stops
+processes inside them first (TERM, then KILL) and refuses to delete a namespace
+that still has processes. Where SELinux
 or a `noexec` home directory stops `test/bin` from running, copy the binaries
 elsewhere and pass that directory:
 
@@ -79,10 +81,13 @@ binaries from your checkout, so such a rule is equivalent to full root.
 - a summary was missing or malformed
 - a sender did not submit all datagrams
 - a positive control failed (a receiver did not accept exactly its own traffic)
-- a capture failed or did not see the injected unicast and broadcast
+- a capture failed, exited before the runner stopped it, reached its safety
+  timeout, or did not see the injected unicast and broadcast
+- namespace cleanup failed (inspect with `test/netns/env.sh status`)
 
 **REVIEW** means the run worked but either:
-- a cell's foreign delivery or effective `IP_MULTICAST_ALL` differed from the prediction below, or
+- a cell's foreign delivery, rejection reasons or effective `IP_MULTICAST_ALL`
+  differed from the prediction below, or
 - the T-MCI-05 IGMP capture did not contain the join record for 192.168.10.20.
 
 The report file is named `results/<date>-<time>-<os><version>-<kernel>.md`. It is
@@ -119,7 +124,7 @@ reports REVIEW rather than being read as "every option set isolates".
 | Accepted | Datagrams that passed every check |
 | Foreign | Delivered datagrams that are not the receiver's own traffic: other group, other interface, other source, or (OD17) unicast, broadcast and local-origin traffic |
 | Predicted | Expected Foreign from the table above |
-| Match | `yes`, or `NO` when Foreign or the effective `IP_MULTICAST_ALL` differs from the prediction |
+| Match | `yes`, or `NO` when Foreign, the rejection reasons and their counts, or the effective `IP_MULTICAST_ALL` differ from the prediction. A wrong reason is a mismatch even when the Foreign total matches |
 | Rejections | Every non-accept verdict with its count |
 
 Zero foreign delivery supports kernel suppression only together with the
@@ -150,6 +155,7 @@ repository root:
 ```bash
 go test ./...
 python3 prototypes/od09-isolation/test_harness.py
+python3 prototypes/od09-isolation/test_runner.py
 python3 test/test_tools.py
 ```
 
@@ -159,7 +165,11 @@ They cover:
 - receive termination and summary validation
 - positive-control and sender counts, and capture exit codes
 - the IGMP join pattern, which matches only join records, never leave records
-- the prediction checks, report rows and `wait_until` timing
+- the prediction checks, including rejection reasons, report rows and `wait_until` timing
+- summary integrity: origin, verdict and foreign counts must add up
+- runner lifecycle with mocks (`test_runner.py`): failed receivers, captures
+  that exit early or time out, cleanup escalation to KILL, and `env.sh down`
+  reporting failures instead of success
 
 Privileged Debian/RHEL runs are still required to establish actual kernel behavior.
 

@@ -1,6 +1,6 @@
 # mcgw project status and next steps
 
-**Last updated:** 2026-10-17, at commit `856286b` plus this file. Read this first
+**Last updated:** 2026-10-17, after the lifecycle and evidence-integrity hardening commit. Read this first
 when picking the project back up. Update it whenever you stop for more than a day.
 
 ## Where things stand
@@ -12,7 +12,7 @@ when picking the project back up. Update it whenever you stop for more than a da
 | Test plan | [47 cases](mcgw-test-plan.md) (43 Ready, 4 Draft) plus 13 lab/qualification stubs; contract gaps G1–G7 all resolved |
 | Open decisions resolved this session | OD-16 (test-build-only fault hooks), OD-17 (no static cycle rejection; warn on local sinks at route ports) |
 | Open decisions added | OD-18 (daemon Go toolchain/version policy) |
-| First code | Namespace test environment, `mcsend`/`mcrecv` tools and the OD-09 isolation prototype. Reviewed twice (the second time by ten parallel reviewers) and hardened: readiness markers, positive controls, kernel-semantics predictions with expected-leak negative controls, T-MCI-05b overlapping membership, OD-17 unicast/broadcast/local-origin checks, VALID/REVIEW/INVALID outcomes. Go, harness and loopback regression checks pass. **Privileged namespace experiment not yet run**: needs a separate lab machine. Lessons for future prototypes: [prototypes/lessonslearned.md](../prototypes/lessonslearned.md) |
+| First code | Namespace test environment, `mcsend`/`mcrecv` tools and the OD-09 isolation prototype. Reviewed twice (the second time by ten parallel reviewers) and hardened: readiness markers, positive controls, kernel-semantics predictions with expected-leak negative controls, T-MCI-05b overlapping membership, OD-17 unicast/broadcast/local-origin checks, VALID/REVIEW/INVALID outcomes, then a third pass on lifecycle and evidence integrity (rejection-reason predictions, summary integrity, cleanup escalation, safe `env.sh down`). Go, harness and loopback regression checks pass. **Privileged namespace experiment not yet run**: needs a separate lab machine. Lessons for future prototypes: [prototypes/lessonslearned.md](../prototypes/lessonslearned.md) |
 | Feature backlog | [FI-01](mcgw-feature-ideas.md#fi-01) read-only browser status page (Candidate, after OD-15) |
 
 ## Recent history (2026-10-17)
@@ -24,6 +24,7 @@ when picking the project back up. Update it whenever you stop for more than a da
 | `1c5ad0e`–`716589e` | First code: namespace environment, test tools, OD-09 prototype; lint fixes; Go version table and OD-18 |
 | `df0ae50` | First prototype hardening (five findings) |
 | `856286b` | Ten-reviewer review applied: predictions and negative controls, VALID/REVIEW/INVALID outcomes, real OD-17 test, T-MCI-05b, IGMP evidence fix, harness and Go fixes, new tests, [lessons learned](../prototypes/lessonslearned.md) |
+| commit after `53e2252` | Third hardening pass: rejection reasons compared per cell, strict summary integrity, captures that end early or time out are INVALID, cleanup escalates TERM→KILL, `env.sh down` never reports false success, `openSocket` fd leak fixed, tools reject positional arguments, `mcsend` `-ttl` validation and pacing fix, `test_runner.py` |
 
 Not yet verified anywhere: everything that needs root (namespace creation,
 the prototype run, SELinux behavior on RHEL, whether a loopback capture counts
@@ -77,9 +78,11 @@ development machine):
 |---|---|---|
 | `ip link add ... netns` error from `env.sh up` | That iproute2 cannot create veth pairs directly inside namespaces | `ip -V` output and the exact error |
 | INVALID: receiver not ready / sender process failed (RHEL) | SELinux or a `noexec` home blocking `test/bin` | `sudo ausearch -m avc -ts recent`; retry with the binaries copied outside the home directory (prototype README, "Run it") |
-| INVALID (other) | Child failure, incomplete summary, failed positive control or capture | The raw directory printed at the end: sender JSON, receiver stderr and capture stderr |
+| INVALID: capture exited before the runner stopped it / reached safety timeout | tcpdump died (permissions, interface missing) or the case ran past 60 s | Capture stderr in the raw directory |
+| `namespace cleanup failed` | A process inside an `mcgw-` namespace survived KILL, or `ip netns` failed | `sudo test/netns/env.sh status`, `sudo ip netns pids <ns>`; then `sudo test/netns/env.sh down` |
+| INVALID (other) | Child failure, incomplete or inconsistent summary, failed positive control or capture | The raw directory printed at the end: sender JSON, receiver stderr and capture stderr |
 | REVIEW: SSM join report missing | tcpdump's IGMP text differs from the pattern, or the join report was not sent | The `igmp-05-*.txt` files in the raw directory |
-| REVIEW: cells differ from predictions | The kernel behaves differently from the documented prediction | The report's Review reasons and the matching raw JSON |
+| REVIEW: cells differ from predictions (count or rejection reason) | The kernel behaves differently from the documented prediction | The report's Review reasons and the matching raw JSON |
 
 Bring the output back and ask for the scripts or predictions to be corrected.
 

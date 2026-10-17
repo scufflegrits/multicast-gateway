@@ -38,11 +38,21 @@ func main() {
 	rate := flag.Int("rate", 100, "datagrams per second")
 	ttl := flag.Int("ttl", 1, "multicast TTL")
 	flag.Parse()
+	// flag.Parse stops at the first positional argument. These tools accept only
+	// flags, so reject leftovers instead of silently ignoring later options.
+	if flag.NArg() != 0 {
+		fail("unexpected positional arguments: %q", flag.Args())
+	}
 	if *n < 0 || *rate <= 0 {
 		fail("-n must be nonnegative and -rate positive")
 	}
 	if *size < 0 || *size > maxUDPPayload {
 		fail("-size must be between 0 and %d", maxUDPPayload)
+	}
+	// Validate even for unicast, where the multicast-only option is unused, so
+	// the same command cannot change from accepted to invalid with its target.
+	if *ttl < 0 || *ttl > 255 {
+		fail("-ttl must be between 0 and 255")
 	}
 
 	dst, err := net.ResolveUDPAddr("udp4", *to)
@@ -104,10 +114,7 @@ func main() {
 		}
 		// Pace from the schedule, but never send a backlog in a burst after a stall:
 		// a burst could overflow the system under test and look like its loss.
-		next = next.Add(interval)
-		if now := time.Now(); next.Before(now) {
-			next = now
-		}
+		next = nextSendAt(next, time.Now(), interval)
 		time.Sleep(time.Until(next))
 	}
 	if firstErr != nil {
@@ -125,6 +132,17 @@ func main() {
 	if errs != 0 {
 		os.Exit(1)
 	}
+}
+
+// nextSendAt preserves an upcoming slot or starts a fresh interval after a
+// missed one. Resetting to now would send the next datagram immediately and
+// create a catch-up burst after a blocked write or process suspension.
+func nextSendAt(previous, now time.Time, interval time.Duration) time.Time {
+	next := previous.Add(interval)
+	if !next.After(now) {
+		return now.Add(interval)
+	}
+	return next
 }
 
 // fillPayload writes the sequence number and send time into the start of b

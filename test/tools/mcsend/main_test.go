@@ -8,6 +8,27 @@ import (
 	"time"
 )
 
+func TestNextSendAtAvoidsCatchUpBurst(t *testing.T) {
+	previous := time.Unix(1700000000, 0)
+	interval := 100 * time.Millisecond
+	for _, tt := range []struct {
+		name          string
+		elapsed, want time.Duration
+	}{
+		{"on schedule", 0, interval},
+		{"before next slot", 40 * time.Millisecond, interval},
+		{"exactly next slot", interval, 2 * interval},
+		{"blocked write or suspended process", 350 * time.Millisecond, 450 * time.Millisecond},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := nextSendAt(previous, previous.Add(tt.elapsed), interval)
+			if want := previous.Add(tt.want); !got.Equal(want) {
+				t.Fatalf("next send is %s after previous slot, want %s", got.Sub(previous), tt.want)
+			}
+		})
+	}
+}
+
 func TestFillPayloadLayout(t *testing.T) {
 	now := time.Unix(1700000000, 123456789)
 	for _, size := range []int{0, 1, 8, 15, 16, 17, 64} {

@@ -115,8 +115,8 @@ class HarnessTests(unittest.TestCase):
                     self.assert_invalid(result)
 
     def test_capture_exit_codes(self):
-        # 143 is the runner stopping the capture; 124 the safety timeout.
-        for code, valid in [(0, True), (124, True), (143, True), (1, False), (127, False)]:
+        # 143 is intentional shutdown; a safety timeout means incomplete evidence.
+        for code, valid in [(0, True), (124, False), (137, False), (143, True), (1, False), (127, False)]:
             with self.subTest(code=code):
                 result = self.run_check(f'bash -c "exit {code}" & pid=$!; wait_capture "$pid"')
                 if valid:
@@ -157,6 +157,42 @@ class HarnessTests(unittest.TestCase):
         result = self.run_check('row_text C "$2" 0 yes', accept_only)
         self.assertTrue(result.stdout.strip().endswith('| 0 | yes |  |'), result.stdout)
 
+    def test_rejection_reasons_must_match_even_with_same_total(self):
+        contents = self.receiver(received=1000, foreign_delivered=800,
+                                 verdicts={'accept': 200, 'wrong_destination': 800})
+        result = self.run_check(
+            "rejections_match \"$2\" '{\"wrong_destination\":400,\"wrong_ingress\":400}'", contents)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('INVALID', result.stderr)
+        result = self.run_check(
+            "rejections_match \"$2\" '{\"wrong_destination\":800,\"wrong_ingress\":0}'", contents)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_summary_origin_and_counter_integrity(self):
+        own = {'dst': '239.1.1.1', 'ifindex': 2, 'src': '192.168.10.20',
+               'verdict': 'accept', 'count': 200}
+        good = {'received': 200, 'verdicts': {'accept': 200}, 'origins': [own]}
+        for overrides, valid in [
+            (good, True),
+            ({**good, 'foreign_delivered': 200}, False),
+            ({**good, 'foreign_delivered': -1}, False),
+            ({**good, 'verdicts': {'accept': 201, 'oversize': -1}}, False),
+            ({**good, 'origins': []}, False),
+            ({**good, 'origins': [{**own, 'count': 200.5}]}, False),
+            ({**good, 'origins': [{**own, 'dst': '192.168.10.1'}],
+              'foreign_delivered': 200}, False),
+            ({**good, 'verdicts': {'unexpected_verdict': 200},
+              'origins': [{**own, 'verdict': 'unexpected_verdict'}]}, False),
+            ({**good, 'options': {}}, False),
+        ]:
+            with self.subTest(overrides=overrides):
+                result = self.run_check('true & pid=$!; wait_receiver "$pid" "$2"',
+                                        self.receiver(**overrides))
+                if valid:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    self.assert_invalid(result)
+
     # wait_until (test/netns/lib.sh) waits the full requested time.
     def test_wait_until(self):
         self.assertEqual(self.run_check('wait_until 1 true').returncode, 0)
@@ -172,7 +208,11 @@ class HarnessTests(unittest.TestCase):
     @staticmethod
     def receiver(**overrides):
         record = {'tool': 'od09-isolation', 'complete': True, 'termination': 'deadline',
-                  'received': 0, 'verdicts': {}}
+                  'name': 'R', 'go': 'test-toolchain', 'received': 0, 'foreign_delivered': 0,
+                  'verdicts': {}, 'origins': [],
+                  'options': {'group': '239.1.1.1', 'source': '', 'iface': 'eth0',
+                              'ifindex': 2, 'port': 3000, 'bind': 'group',
+                              'mcall': 'default', 'mcall_effective': 1}}
         record.update(overrides)
         return json.dumps(record)
 

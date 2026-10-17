@@ -47,6 +47,10 @@ func main() {
 	lines := flag.Bool("lines", false, "print one JSON line per datagram")
 	readyFile := flag.String("ready-file", "", "write readiness marker after socket setup")
 	flag.Parse()
+	// Positional arguments would also hide any flags after them from flag.Parse.
+	if flag.NArg() != 0 {
+		fail("unexpected positional arguments: %q", flag.Args())
+	}
 	if *duration <= 0 {
 		fail("-duration must be positive")
 	}
@@ -173,12 +177,14 @@ func openSocket(group net.IP, port int, ifi *net.Interface, source net.IP, bind,
 	if err != nil {
 		return -1, 0, fmt.Errorf("socket: %w", err)
 	}
-	defer func() {
+	// Capture the owned descriptor now: explicit error returns assign -1 to the
+	// named fd result before deferred functions run.
+	defer func(rawFD int) {
 		if err != nil {
-			_ = syscall.Close(fd)
+			_ = syscall.Close(rawFD)
 			fd = -1
 		}
-	}()
+	}(fd)
 	set := func(level, opt, v int, label string) error {
 		if err := syscall.SetsockoptInt(fd, level, opt, v); err != nil {
 			return fmt.Errorf("%s: %w", label, err)

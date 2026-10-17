@@ -6,7 +6,7 @@ it. Each lesson names the mistake or finding it came from. Add to this file
 whenever a review or a lab run teaches something new.
 
 Sources: the first prototype commit, the first hardening review (five findings),
-and a second review by ten parallel reviewers covering bash logic, Linux socket
+a third hardening pass on lifecycle and evidence integrity, and a second review by ten parallel reviewers covering bash logic, Linux socket
 semantics, namespace portability, Go code, experiment design, tcpdump parsing,
 test quality, operational safety, docs consistency and an end-to-end trace.
 
@@ -52,6 +52,9 @@ test quality, operational safety, docs consistency and an end-to-end trace.
 | **Teardown events leak into capture windows.** Closing a source-specific socket sends an IGMPv3 BLOCK record for the same source, so a loose pattern "proved" a join that was never captured. Stop the capture before the receivers close | tcpdump and end-to-end reviewers, independently |
 | **Match only records that prove the claim.** Use `igmp v3 report.*gaddr G (allow\|to_in\|is_in) \{[^}]*S[ }]`; the trailing `[ }]` stops `.20` matching `.200` | tcpdump review, confirmed with synthetic pcaps |
 | **Learn output formats from synthetic pcaps.** Write packets with a small Python script and decode them with `tcpdump -r file -nn -vv`, which needs no root. With `-vv`, IGMPv3 records stay on one line and UDP prints two lines per packet (IP header, then addresses) | tcpdump review |
+| **A capture that ended on its own is not evidence.** Check it is still alive before sending TERM; accept only 0 or 143, and treat 124/137 (safety timeout) or an early exit as INVALID | Third hardening pass |
+| **Compare reasons, not only totals.** A Foreign count can match while the rejection reason is wrong (`wrong_ingress` instead of `wrong_destination`); predict and compare the per-reason counts | Third hardening pass |
+| **Validate summary integrity, not just presence.** Origins, verdicts and foreign counts must add up, and every accepted origin must be the receiver's own | Third hardening pass |
 | **Use `--immediate-mode` and stop captures explicitly.** Without it tcpdump buffers for up to about a second and loses the tail on SIGTERM | End-to-end review |
 | **Readiness, not sleeps.** Wait for tcpdump's `listening on` on stderr and for a ready-marker file each receiver writes after joining | First hardening review |
 | **Loopback captures may count a packet in both directions**; assert "at least" for `lo` | Kept conservative because it could not be verified without root |
@@ -75,6 +78,9 @@ test quality, operational safety, docs consistency and an end-to-end trace.
 | Lesson | Where it came from |
 |---|---|
 | **`$SECONDS` has one-second resolution.** A "3 s" deadline could give up after 2.2 s. Count attempts, and check the arithmetic: N attempts give N−1 sleeps | Bash and namespace reviewers; the off-by-one was caught by a new timing test |
+| **Cleanup must escalate.** TERM is cooperative; send TERM, wait a bounded time, then KILL and reap, or one wedged child blocks namespace removal forever. Give each child `timeout --kill-after` too | Third hardening pass |
+| **A failed listing is not an empty environment.** `down` must fail when `ip netns list`/`pids` fails, must not delete a namespace whose processes survive, and cleanup failure must make the run fail | Third hardening pass |
+| **Wrap the runner in `main()`** so tests can source it and exercise cleanup and evidence functions with mocks, without root | Third hardening pass (`test_runner.py`) |
 | **Cleanup must ignore further signals.** `trap '' INT TERM` first, or a second Ctrl-C skips namespace removal | Three reviewers |
 | **Wait for each PID and forget it once reaped**, so cleanup never signals a reused PID; never rely on a bare `wait` | First and second reviews |
 | **Know the exit codes of wrappers.** GNU `timeout` returns 124 when it expires and 143 when it is sent SIGTERM itself; `grep -c` returns 1 for no match and 2 for errors | Verified with small experiments |
@@ -92,9 +98,12 @@ test quality, operational safety, docs consistency and an end-to-end trace.
 |---|---|
 | **Standard library only, and a low `go` directive**, so the tools build with distro Go; prove it with `GOTOOLCHAIN=go1.22.12 go test ./...` | Distro Go is 1.24 on Debian 13 and varies on RHEL |
 | **`//go:build linux`** on tools that use Linux-only `syscall` APIs, so other platforms skip them instead of failing `go build ./...` | First lint review |
+| **A deferred close must capture the fd, not read the named result.** `return -1, ..., err` assigns `fd = -1` before the `defer` runs, so `defer func(){ Close(fd) }()` closed nothing and leaked a descriptor. Pass it in: `defer func(raw int){...}(fd)`; test by counting `/proc/self/fd` | Third hardening pass |
+| **Reject positional arguments.** `flag.Parse` stops at the first one, silently ignoring every flag after it | Third hardening pass |
+| **Validate options even when unused** (for example `-ttl` for unicast), so a command's validity does not depend on its target | Third hardening pass |
 | **Close raw sockets on every error path.** With `syscall.Socket` use named results and a `defer` that closes on error; `net.FilePacketConn` duplicates the fd, so close the `os.File` afterwards | Go review |
 | **Deterministic output.** Sort by comparing fields; `fmt.Sprint` keys collide (`"239.1.1.1",23` and `"239.1.1.12",3`) and sort numbers as text | Go review; regression test added |
-| **Pacing must not burst after a stall**: reset the schedule when behind, and do not sleep after the last item | Go review |
+| **Pacing must not burst after a stall**: when a slot is missed, schedule the next one a full interval from now (resetting to *now* still sends immediately), and do not sleep after the last item | Go review |
 | **Exit-code convention:** 0 success, 1 incomplete or failed work (summary still printed), 2 usage/setup; always print a summary with `complete` and `termination` | First hardening review |
 | **Validate every flag** (port range, payload size, unknown interface), and print the first runtime error, not just a count | Go review |
 | **Factor pure functions** (`verdict`, `pktinfo`, `sortOrigins`, `fillPayload`) so they can be tested without sockets; build control-message buffers in tests with `syscall.CmsgSpace` | Test review |
@@ -132,6 +141,7 @@ go test -race ./...
 GOTOOLCHAIN=go1.22.12 go test ./...       # minimum supported Go
 shellcheck -x -P SCRIPTDIR test/netns/*.sh test/build.sh prototypes/od09-isolation/*.sh
 python3 prototypes/od09-isolation/test_harness.py
+python3 prototypes/od09-isolation/test_runner.py
 python3 test/test_tools.py
 python3 scripts/check-docs.py
 git diff --check
