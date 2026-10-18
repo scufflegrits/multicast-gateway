@@ -55,7 +55,9 @@ sudo prototypes/od09-isolation/run-mci.sh      # about 5 minutes; use tmux/scree
 
 The runner removes any existing `mcgw-` namespaces before starting. It stops
 processes inside them first (TERM, then KILL) and refuses to delete a namespace
-that still has processes. Where SELinux
+that still has processes. The runner and `env.sh up/down` share an exclusive
+`/run/mcgw-test.lock`; an overlapping invocation fails before changing namespaces.
+`env.sh status` remains available during a run. Where SELinux
 or a `noexec` home directory stops `test/bin` from running, copy the binaries
 elsewhere and pass that directory:
 
@@ -63,6 +65,15 @@ elsewhere and pass that directory:
 sudo install -d /usr/local/libexec/mcgw-test
 sudo install -m 0755 test/bin/* /usr/local/libexec/mcgw-test/
 sudo prototypes/od09-isolation/run-mci.sh /usr/local/libexec/mcgw-test
+```
+
+The runner snapshots both executables into the private raw directory and runs
+those copies. That directory defaults to `/tmp`. If execution there is denied
+(including a `noexec` mount), choose an executable evidence parent explicitly:
+
+```bash
+sudo install -d /usr/local/libexec/mcgw-test-runs
+sudo prototypes/od09-isolation/run-mci.sh /usr/local/libexec/mcgw-test /usr/local/libexec/mcgw-test-runs
 ```
 
 Do not grant a sudo rule for this script alone: it sources files and runs
@@ -81,6 +92,7 @@ binaries from your checkout, so such a rule is equivalent to full root.
 - a summary was missing or malformed
 - a sender did not submit all datagrams
 - a positive control failed (a receiver did not accept exactly its own traffic)
+  or either source in an any-source SSM control did not contribute exactly N
 - a capture failed, exited before the runner stopped it, reached its safety
   timeout, or did not see the injected unicast and broadcast
 - namespace cleanup failed (inspect with `test/netns/env.sh status`)
@@ -91,9 +103,17 @@ binaries from your checkout, so such a rule is equivalent to full root.
 - the T-MCI-05 IGMP capture did not contain the join record for 192.168.10.20.
 
 The report file is named `results/<date>-<time>-<os><version>-<kernel>.md`. It is
-never overwritten, and it refuses to replace a symlink. Raw JSON, readiness markers,
-stderr and captures stay in the printed `/tmp/mcgw-od09.*` directory, owned by the
-invoking user. Copy anything you need before a reboot, because `/tmp` is cleaned.
+published only after successful cleanup, never overwritten, and never replaces a
+symlink, even if the destination appears during publication. An INVALID run may
+retain a draft `report.md` in the raw directory; it is not a usable results report.
+Raw JSON, readiness markers, stderr, captures and executable snapshots stay in the
+printed evidence directory, owned by the invoking user. Copy anything needed
+before a reboot when using `/tmp`, because it is cleaned.
+
+Each report records executable SHA256 hashes, original paths and Go build metadata
+when readable with the installed Go tool. Unavailable executable source revisions
+remain unknown. The harness checkout commit identifies the scripts, independently
+of the executable revisions; stale or custom binaries are never assigned that commit.
 
 ## Predictions
 
@@ -156,6 +176,7 @@ repository root:
 go test ./...
 python3 prototypes/od09-isolation/test_harness.py
 python3 prototypes/od09-isolation/test_runner.py
+python3 test/netns/test_env.py
 python3 test/test_tools.py
 ```
 
@@ -167,9 +188,13 @@ They cover:
 - the IGMP join pattern, which matches only join records, never leave records
 - the prediction checks, including rejection reasons, report rows and `wait_until` timing
 - summary integrity: origin, verdict and foreign counts must add up
+- independent accepted counts for each source in the SSM any-source controls
+- publication only after cleanup, collision refusal, executable snapshots and
+  lock exclusion/inheritance
 - runner lifecycle with mocks (`test_runner.py`): failed receivers, captures
   that exit early or time out, cleanup escalation to KILL, and `env.sh down`
   reporting failures instead of success
+- namespace listing failures prevent creation and do not imply an absent environment
 
 Privileged Debian/RHEL runs are still required to establish actual kernel behavior.
 

@@ -19,7 +19,10 @@ veth() {
 addr() { ip -n "$1" addr add "$3" dev "$2"; }
 
 up() {
-    if ip netns list | grep -q '^mcgw-'; then
+    local listing
+    # Enumeration failure is not evidence that creating the environment is safe.
+    listing=$(ip netns list) || return 1
+    if grep -q '^mcgw-' <<< "$listing"; then
         echo "error: mcgw- namespaces already exist; run '$0 down' first" >&2
         exit 1
     fi
@@ -119,9 +122,12 @@ down() {
 }
 
 status() {
-    ip netns list | grep '^mcgw-' || { echo "ENV not present"; return 0; }
+    local listing ns
+    # Use one checked snapshot: an ip failure must not look like an absent ENV.
+    listing=$(ip netns list) || return 1
+    grep '^mcgw-' <<< "$listing" || { echo "ENV not present"; return 0; }
     for ns in "${MCGW_NAMESPACES[@]}"; do
-        ip netns list | grep -q "^$ns\b" || continue
+        grep -q "^$ns\b" <<< "$listing" || continue
         echo "== $ns"
         ip -n "$ns" -br addr show | grep -v '^lo ' || true
     done
@@ -130,11 +136,19 @@ status() {
         net.ipv4.conf.eth0.force_igmp_version 2>/dev/null || true
 }
 
-require_root
-require_tools ip sysctl
-case "${1:-}" in
-    up) up ;;
-    down) down ;;
-    status) status ;;
-    *) echo "usage: $0 up | down | status" >&2; exit 2 ;;
-esac
+# Keep dispatch separate so unprivileged tests can replace only the lock and
+# namespace commands while exercising the real lifecycle functions.
+main() {
+    require_root
+    require_tools ip sysctl flock
+    case "${1:-}" in
+        up) lock_environment /run/mcgw-test.lock || return 1; up ;;
+        down) lock_environment /run/mcgw-test.lock || return 1; down ;;
+        status) status ;;
+        *) echo "usage: $0 up | down | status" >&2; exit 2 ;;
+    esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+    main "$@"
+fi

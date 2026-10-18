@@ -59,6 +59,17 @@ expect_accept() {
     }
 }
 
+# Aggregate accepted counts cannot prove both ASM control sources arrived: a
+# duplicate from one source could hide the other's absence. Check each source.
+expect_accept_source() {
+    local file=$1 source=$2 expected=$3
+    jq -e --arg source "$source" --argjson n "$expected" '
+        ([.origins[] | select(.verdict == "accept" and .src == $source) |
+            .count] | add // 0) == $n' "$file" >/dev/null || {
+        invalid "positive control failed: $file (expected $expected accepted from $source)"; return 1;
+    }
+}
+
 check_sender() {
     local file=$1 expected=$2
     jq -se --argjson n "$expected" 'length == 1 and

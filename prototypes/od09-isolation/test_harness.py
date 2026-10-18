@@ -101,6 +101,35 @@ class HarnessTests(unittest.TestCase):
                 else:
                     self.assert_invalid(result)
 
+    def test_positive_control_requires_each_source(self):
+        # Keep the aggregate at 400 in the rejection cases: the old aggregate
+        # check alone accepted them despite missing or imbalanced sources.
+        for first, second, valid in [(200, 200, True), (400, 0, False),
+                                     (0, 400, False), (199, 201, False),
+                                     (201, 199, False)]:
+            with self.subTest(first=first, second=second):
+                origins = [dict(dst='232.1.1.1', ifindex=2, src=source,
+                                verdict='accept', count=count)
+                           for source, count in [('192.168.10.20', first),
+                                                 ('192.168.10.21', second)] if count]
+                result = self.run_check(
+                    'expect_accept "$2" 400; '
+                    'expect_accept_source "$2" 192.168.10.20 200; '
+                    'expect_accept_source "$2" 192.168.10.21 200',
+                    self.receiver(received=400, verdicts={'accept': 400}, origins=origins))
+                if valid:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    self.assert_invalid(result)
+
+        # Two origin records from the same source must be added, rather than
+        # mistaking multiple rows for evidence of multiple sender sources.
+        origins = [dict(dst='232.1.1.1', ifindex=2, src='192.168.10.20',
+                        verdict='accept', count=200) for _ in range(2)]
+        result = self.run_check('expect_accept_source "$2" 192.168.10.20 200',
+                                self.receiver(origins=origins))
+        self.assert_invalid(result)
+
     def test_sender_counts_required(self):
         for record, valid in [({'sent': 200, 'errors': 0}, True), ({'sent': 0, 'errors': 0}, False),
                               ({'sent': 199, 'errors': 1}, False),

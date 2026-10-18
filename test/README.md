@@ -53,8 +53,9 @@ RHEL 9 or 10 (packages come from BaseOS and AppStream; the system must be regist
 sudo dnf install -y git golang iproute tcpdump jq python3
 ```
 
-`timeout`, `install` and `paste` come from coreutils, which both distributions
-install by default. Python 3 is only needed for the regression checks.
+`timeout`, `install`, `sha256sum`, `ln` and `paste` come from coreutils;
+`flock` comes from util-linux. Both distributions install these by default.
+Python 3 is only needed for the regression checks.
 
 Check and record the Go version and settings:
 
@@ -104,6 +105,8 @@ sudo test/netns/env.sh down
 `mcgw-` namespace and stops processes still running inside them. `env.sh`
 implements the IPv4 topology of the test plan's
 [shared environment](../docs/mcgw-test-plan.md#shared-environment).
+`up` and `down` share `/run/mcgw-test.lock` with the prototype runner; concurrent
+mutations fail before changing the environment. `status` remains available.
 
 ## 5. Run a prototype
 
@@ -135,14 +138,18 @@ git push
 ```
 
 Raw per-receiver output stays in the `/tmp/mcgw-od09.*` directory the script
-prints. It is owned by your user, it is not committed, and it is lost on reboot,
-so copy anything needed for investigation first.
+prints (or a directory under the optional evidence parent). It also retains the
+exact executed binaries and their hashes. It is owned by your user and is not
+committed; `/tmp` is lost on reboot, so copy needed evidence first. The
+[prototype guide](../prototypes/od09-isolation/README.md#run-it) explains how to
+choose an executable evidence directory when `/tmp` execution is denied.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
 | `must run as root` | Run the environment and prototype scripts with `sudo` |
+| `mcgw test environment is in use` | Another runner or environment mutation holds the shared lock; let it finish. `status` can inspect the live environment |
 | `mcgw- namespaces already exist` (from `env.sh up`) | A previous environment is still present: `sudo test/netns/env.sh down`. The prototype runner removes it automatically |
 | `INVALID experiment: receiver not ready` or `sender process failed` on RHEL | Possibly SELinux or a `noexec` home: run `sudo ausearch -m avc -ts recent`, then copy the binaries outside your home and pass that directory to the runner (see the [prototype guide](../prototypes/od09-isolation/README.md#run-it)) |
 | `INVALID experiment` (other) | Read the message and the files in the printed raw directory (receiver `.stderr`, sender `.json.stderr`, capture `.txt.stderr`) |
@@ -162,6 +169,7 @@ so copy anything needed for investigation first.
 | `test/tools/` | `mcsend` (numbered-payload sender) and `mcrecv` (unicast listener) |
 | `test/build.sh` | Builds tools and prototypes into `test/bin/` |
 | `test/test_tools.py` | Process-level regression checks for the tools (loopback only) |
+| `test/netns/test_env.py` | Namespace enumeration checks with mocks, without root or networking |
 | `prototypes/od09-isolation/test_harness.py`, `test_runner.py` | Unprivileged harness and runner-lifecycle checks (no namespaces, no traffic) |
 | `prototypes/od09-isolation/results/` | Committed OD-09 run reports |
 | `prototypes/` | Throwaway experiments that produce evidence for open decisions; never imported by mcgw |

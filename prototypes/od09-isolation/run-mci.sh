@@ -3,9 +3,11 @@
 # overlapping-membership variant (T-MCI-05b) and the OD-17 unicast/broadcast/
 # local-origin checks, once per isolation option set, and write a report.
 #
-# Usage: sudo prototypes/od09-isolation/run-mci.sh [BIN_DIR]
+# Usage: sudo prototypes/od09-isolation/run-mci.sh [BIN_DIR [EVIDENCE_PARENT]]
 #   BIN_DIR defaults to test/bin. Pass another directory (for example one under
 #   /usr/local) where SELinux or a noexec /home blocks running test/bin.
+#   EVIDENCE_PARENT defaults to /tmp; snapshots execute there, so use an
+#   executable filesystem if /tmp is mounted noexec or execution is denied.
 #
 # Outcomes (see README.md "Run outcomes"):
 #   exit 0  VALID   every validity check passed and every cell matched its prediction
@@ -33,8 +35,7 @@ cleanup() {
     trap '' INT TERM # a second Ctrl-C must not cut cleanup short and leave namespaces
     # TERM is cooperative. Escalate before waiting so a wedged child cannot
     # prevent namespace teardown forever. Each child also has its own timeout.
-    stop_children "${pids[@]}"
-    if ! "$env_sh" down >/dev/null; then
+    if ! teardown_environment; then
         echo "error: namespace cleanup failed; inspect with test/netns/env.sh status" >&2
         rc=1
     fi
@@ -47,6 +48,51 @@ cleanup() {
     esac
     echo "raw output: $raw (copy anything you need before reboot; /tmp is cleaned)" >&2
     exit "$rc"
+}
+
+# Cleanup is part of experiment validity, so it must finish before publication.
+# EXIT still handles all earlier failures, without running teardown twice.
+teardown_environment() {
+    [[ ${environment_cleaned:-0} == 0 ]] || return 0
+    stop_children "${pids[@]}"
+    pids=()
+    "$env_sh" down >/dev/null || return 1
+    environment_cleaned=1
+}
+
+# Preserve and run the exact selected executables, including a custom BIN_DIR.
+# The checkout revision identifies the harness; hashes identify the binaries.
+snapshot_binaries() {
+    local selected=$bin tool
+    mkdir "$raw/bin"
+    for tool in mcsend od09-isolation; do
+        install -m 0755 "$selected/$tool" "$raw/bin/$tool"
+        printf '%s: %s\n' "$tool" "$selected/$tool" >>"$raw/binary-inputs.txt"
+    done
+    bin=$raw/bin
+    (cd "$bin" && sha256sum mcsend od09-isolation) >"$raw/binary-sha256.txt"
+    # Go is optional when running prebuilt tools. Missing metadata is explicit;
+    # never substitute the current checkout commit for a binary's source revision.
+    for tool in mcsend od09-isolation; do
+        if ! command -v go >/dev/null || ! go version -m "$bin/$tool" >"$raw/$tool.buildinfo" 2>&1; then
+            printf 'Build metadata unavailable; executable source revision unknown.\n' >"$raw/$tool.buildinfo"
+        fi
+    done
+}
+
+publish_report() {
+    local staged
+    teardown_environment || { invalid "namespace cleanup failed before publication"; return 1; }
+    # Stage on the destination filesystem, then atomically link without replacing
+    # an existing file or symlink (including one created after our initial check).
+    [[ ! -e $out && ! -L $out ]] || { invalid "refusing to overwrite existing $out"; return 1; }
+    staged=$(mktemp "${out%/*}/.od09-report.XXXXXX") || return 1
+    if ! install -m 0644 "${owner[@]}" "$report" "$staged" || ! ln -T "$staged" "$out"; then
+        rm -f -- "$staged"
+        invalid "could not publish report: $out"
+        return 1
+    fi
+    rm -f -- "$staged"
 }
 N=200          # datagrams per sender; filtering is deterministic, so volume only needs to be exact
 RECV_TIME=8s   # receive window; covers readiness waits plus up to five 0.5 s sends
@@ -240,6 +286,8 @@ run_case() {
     send mcgw-src -iface s0 -to 232.1.1.1:3000 -from 192.168.10.21
     finish_case
     expect_accept "$raw/C-05-$tag.json" "$((2 * N))"
+    expect_accept_source "$raw/C-05-$tag.json" 192.168.10.20 "$N"
+    expect_accept_source "$raw/C-05-$tag.json" 192.168.10.21 "$N"
     result T-MCI-05-control "C-05-$tag" 0
 
     # T-MCI-05: source-specific membership alone. The interface filter becomes
@@ -272,6 +320,8 @@ run_case() {
     finish_case
     expect_accept "$raw/R3-05b-$tag.json" "$N"
     expect_accept "$raw/U-05b-$tag.json" "$((2 * N))"
+    expect_accept_source "$raw/U-05b-$tag.json" 192.168.10.20 "$N"
+    expect_accept_source "$raw/U-05b-$tag.json" 192.168.10.21 "$N"
     result T-MCI-05b "R3-05b-$tag" 0
     result T-MCI-05b "U-05b-$tag" 0
 
@@ -303,7 +353,9 @@ run_case() {
 # with mocked processes, without root or namespace changes.
 main() {
     require_root
-    require_tools ip jq tcpdump timeout install git
+    require_tools ip jq tcpdump timeout install git sha256sum flock
+    (($# <= 2)) || { echo "usage: $0 [BIN_DIR [EVIDENCE_PARENT]]" >&2; return 2; }
+    lock_environment /run/mcgw-test.lock || return 1
 
     bin=${1:-$repo/test/bin}
     for tool in mcsend od09-isolation; do
@@ -311,12 +363,15 @@ main() {
     done
 
     env_sh=$repo/test/netns/env.sh
-    raw=$(mktemp -d /tmp/mcgw-od09.XXXXXX)
+    raw=$(mktemp -d "${2:-/tmp}/mcgw-od09.XXXXXX")
     pids=()
 
     trap cleanup EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
+
+    snapshot_binaries
+    harness_revision=$(git -c safe.directory="$repo" -C "$repo" describe --always --dirty 2>/dev/null || echo unknown)
 
     # The runner always starts from a clean environment: any existing mcgw-
     # namespaces (for example from a manual 'env.sh up') are removed first.
@@ -358,11 +413,21 @@ main() {
         echo "| iproute2 | $(ip -V | head -1) |"
         echo "| tcpdump | $(tcpdump --version 2>&1 | head -1) |"
         echo "| Prototype Go runtime | $(jq -er '.go' "$raw"/R1-01-group-default.json 2>/dev/null || echo unknown) |"
-        echo "| Repository commit | $(git -c safe.directory="$repo" -C "$repo" describe --always --dirty 2>/dev/null || echo unknown) |"
+        echo "| Harness checkout commit | $harness_revision (executable revisions recorded separately below) |"
         echo "| GW rp_filter all/eth0, force_igmp_version eth0 | $gw_sysctls |"
         echo "| Socket options on every receiver | SO_REUSEADDR=1, IP_PKTINFO=1; ASM join IP_ADD_MEMBERSHIP (ip_mreqn ifindex); SSM join IP_ADD_SOURCE_MEMBERSHIP (interface address) |"
         echo "| Volume | $N datagrams per sender at 400/s, 64-byte payloads (test plan examples use 500-1000; filtering is deterministic, counts must be exact) |"
         echo "| SSM join reports seen (T-MCI-05) | $igmp_join_runs of 4 captures |"
+        echo
+        echo "## Executable provenance"
+        echo
+        echo "These private snapshots were used for every case and remain in the raw directory."
+        echo "The harness checkout commit does not establish their source revision."
+        echo
+        echo '```text'
+        cat "$raw/binary-inputs.txt" "$raw/binary-sha256.txt"
+        cat "$raw/mcsend.buildinfo" "$raw/od09-isolation.buildinfo"
+        echo '```'
         echo
         if [[ $status == REVIEW ]]; then
             echo "## Review reasons"
@@ -413,10 +478,9 @@ main() {
     # Copy the report into the user-owned results directory without following a
     # planted symlink and without overwriting an earlier run.
     out=$here/results/$(date +%F-%H%M%S)-${ID}${VERSION_ID:-}-${kernel}.md
-    if [[ -e $out || -L $out ]]; then invalid "refusing to overwrite existing $out"; fi
     owner=()
     if [[ -n ${SUDO_USER:-} ]]; then owner=(-o "$SUDO_USER" -g "$(id -gn "$SUDO_USER")"); fi
-    install -m 0644 "${owner[@]}" "$report" "$out"
+    publish_report
     echo "results: $out ($status)"
 
     [[ $status == VALID ]] || exit 3

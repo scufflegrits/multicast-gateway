@@ -22,6 +22,17 @@ require_tools() {
     fi
 }
 
+# All mutations share one lifetime lock. FD 9 is inherited by env.sh calls from
+# the runner, which reuses the same locked open file instead of deadlocking on a
+# second open. Only reuse an FD that refers to this exact lock inode.
+lock_environment() {
+    local lock=${1:-/run/mcgw-test.lock}
+    if [[ ! /proc/self/fd/9 -ef $lock ]]; then
+        exec 9>"$lock" || return 1
+    fi
+    flock -n 9 || { echo "error: mcgw test environment is in use" >&2; return 1; }
+}
+
 # nsx NAMESPACE COMMAND... runs a command inside a test namespace.
 nsx() {
     local ns=$1

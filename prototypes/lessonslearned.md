@@ -6,7 +6,8 @@ it. Each lesson names the mistake or finding it came from. Add to this file
 whenever a review or a lab run teaches something new.
 
 Sources: the first prototype commit, the first hardening review (five findings),
-a third hardening pass on lifecycle and evidence integrity, and a second review by ten parallel reviewers covering bash logic, Linux socket
+a third hardening pass on lifecycle and evidence integrity, the resumed scheduled
+review recorded in [OD-09 review](od09-isolation/review.md), and a second review by ten parallel reviewers covering bash logic, Linux socket
 semantics, namespace portability, Go code, experiment design, tcpdump parsing,
 test quality, operational safety, docs consistency and an end-to-end trace.
 
@@ -35,6 +36,7 @@ test quality, operational safety, docs consistency and an end-to-end trace.
 | Lesson | Where it came from |
 |---|---|
 | **Positive controls are mandatory.** Zero cross-delivery means nothing if the receiver also got none of its own traffic. Assert each receiver accepted exactly its own N | First version would have reported "isolated" on a run where no traffic arrived |
+| **Check every input independently.** For a two-source control, require N accepted from each source, not just 2N total | Resumed scheduled review: a valid summary with .20=400 and .21=0 passed the old SSM control; a per-source regression now rejects it |
 | **Negative controls catch harness faults that look like success.** Predict which option sets must leak (for example a wildcard socket with `IP_MULTICAST_ALL=1`) and flag a run where they do not | Second review: an all-zero run would have read as "every option set isolates" |
 | **Write predictions down and compare automatically.** A per-cell Predicted/Match column turns a wall of numbers into a short list of surprises | Second review; predictions came from the kernel-semantics reviewer |
 | **A surprising result is data, not a broken run.** Prediction mismatches and missing optional evidence produce REVIEW (exit 3, report kept); only process, summary, control or capture failures produce INVALID | Second review found the old MISSING state was both "kept" and "INVALID" |
@@ -55,6 +57,7 @@ test quality, operational safety, docs consistency and an end-to-end trace.
 | **A capture that ended on its own is not evidence.** Check it is still alive before sending TERM; accept only 0 or 143, and treat 124/137 (safety timeout) or an early exit as INVALID | Third hardening pass |
 | **Compare reasons, not only totals.** A Foreign count can match while the rejection reason is wrong (`wrong_ingress` instead of `wrong_destination`); predict and compare the per-reason counts | Third hardening pass |
 | **Validate summary integrity, not just presence.** Origins, verdicts and foreign counts must add up, and every accepted origin must be the receiver's own | Third hardening pass |
+| **Identify the executables actually measured.** Run retained private snapshots, record hashes and available build metadata, and distinguish their revisions from the harness checkout | Resumed review: custom or stale BIN_DIR binaries were attributed to the current checkout; snapshot/hash regression preserves their exact bytes |
 | **Use `--immediate-mode` and stop captures explicitly.** Without it tcpdump buffers for up to about a second and loses the tail on SIGTERM | End-to-end review |
 | **Readiness, not sleeps.** Wait for tcpdump's `listening on` on stderr and for a ready-marker file each receiver writes after joining | First hardening review |
 | **Loopback captures may count a packet in both directions**; assert "at least" for `lo` | Kept conservative because it could not be verified without root |
@@ -80,6 +83,9 @@ test quality, operational safety, docs consistency and an end-to-end trace.
 | **`$SECONDS` has one-second resolution.** A "3 s" deadline could give up after 2.2 s. Count attempts, and check the arithmetic: N attempts give N−1 sleeps | Bash and namespace reviewers; the off-by-one was caught by a new timing test |
 | **Cleanup must escalate.** TERM is cooperative; send TERM, wait a bounded time, then KILL and reap, or one wedged child blocks namespace removal forever. Give each child `timeout --kill-after` too | Third hardening pass |
 | **A failed listing is not an empty environment.** `down` must fail when `ip netns list`/`pids` fails, must not delete a namespace whose processes survive, and cleanup failure must make the run fail | Third hardening pass |
+| **Enumeration errors must stop startup and status too.** A failed listing is neither permission to create namespaces nor proof they are absent | Resumed review: mocked listing failures made `up` succeed and `status` claim no environment; `test_env.py` now guards both |
+| **Cleanup is a publication gate.** Publish usable reports only after teardown succeeds, and create the destination atomically without replacement | Resumed review reproduced an INVALID exit with an installed VALID report; runner tests now cover failed cleanup and destination races |
+| **Serialize shared environment mutations.** Hold a common lock for the runner lifetime and reuse it in child environment commands | Resumed review: overlapping runners could delete each other's namespaces; lock exclusion and inherited ownership are regression-tested |
 | **Wrap the runner in `main()`** so tests can source it and exercise cleanup and evidence functions with mocks, without root | Third hardening pass (`test_runner.py`) |
 | **Cleanup must ignore further signals.** `trap '' INT TERM` first, or a second Ctrl-C skips namespace removal | Three reviewers |
 | **Wait for each PID and forget it once reaped**, so cleanup never signals a reused PID; never rely on a bare `wait` | First and second reviews |
@@ -142,6 +148,7 @@ GOTOOLCHAIN=go1.22.12 go test ./...       # minimum supported Go
 shellcheck -x -P SCRIPTDIR test/netns/*.sh test/build.sh prototypes/od09-isolation/*.sh
 python3 prototypes/od09-isolation/test_harness.py
 python3 prototypes/od09-isolation/test_runner.py
+python3 test/netns/test_env.py
 python3 test/test_tools.py
 python3 scripts/check-docs.py
 git diff --check

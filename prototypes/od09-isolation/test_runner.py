@@ -3,6 +3,7 @@
 
 No network namespaces are created and no network traffic is sent.
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -95,7 +96,7 @@ class RunnerTests(unittest.TestCase):
     def test_unreadable_igmp_evidence_is_invalid(self):
         result = self.runner('''
             recv() { :; }; send() { :; }; finish_case() { :; }
-            expect_accept() { :; }; result() { :; }
+            expect_accept() { :; }; expect_accept_source() { :; }; result() { :; }
             capture() { :; }; stop_captures() { :; }
             count_matches() { printf '1\\n'; return 2; }
             run_case group 0
@@ -114,6 +115,117 @@ class RunnerTests(unittest.TestCase):
             test "${#mismatches[@]}" -eq 1
             [[ ${rows[0]} == *'| NO |'* ]]
         ''', {'fixture.json': summary})
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_publication_requires_cleanup_and_does_not_repeat_it(self):
+        for cleanup_success in (True, False):
+            with self.subTest(cleanup_success=cleanup_success):
+                result = self.runner('''
+                    report=$raw/report.md; out=$raw/published.md; owner=()
+                    env_sh=$raw/env
+                    chmod +x "$env_sh"
+                    if publish_report; then
+                        test -f "$out"
+                        teardown_environment
+                        echo published
+                    else
+                        test ! -e "$out"
+                        echo blocked
+                    fi
+                    test "$(wc -l < "$raw/down.calls")" -eq 1
+                    test -f "$report"
+                ''', {'report.md': '| Run status | **VALID** |\n',
+                      'env': '#!/bin/sh\necho down >> "${0%/*}/down.calls"\nexit ' +
+                             ('0' if cleanup_success else '1') + '\n'})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), 'published' if cleanup_success else 'blocked')
+                if not cleanup_success:
+                    self.assertIn('cleanup failed before publication', result.stderr)
+
+    def test_publication_refuses_existing_file_and_symlink(self):
+        for target in ('printf old > "$out"', 'ln -s "$raw/victim" "$out"'):
+            with self.subTest(target=target):
+                result = self.runner('''
+                    report=$raw/report.md; out=$raw/published.md; owner=()
+                    printf old > "$raw/victim"
+                ''' + target + '''
+                    if publish_report; then exit 9; fi
+                    test "$(cat "$out")" = old
+                    test "$(cat "$raw/victim")" = old
+                ''', {'report.md': 'new\n'})
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('refusing to overwrite', result.stderr)
+
+    def test_publication_cannot_overwrite_a_racing_target(self):
+        result = self.runner('''
+            report=$raw/report.md; out=$raw/published.md; owner=()
+            ln() { printf raced > "$out"; command ln "$@"; }
+            if publish_report; then exit 9; fi
+            test "$(cat "$out")" = raced
+            test -z "$(find "$raw" -name '.od09-report.*' -print)"
+        ''', {'report.md': 'new\n'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('could not publish report', result.stderr)
+
+    def test_binary_snapshots_preserve_the_selected_bytes(self):
+        script = '#!/bin/sh\nexit 0\n'
+        digest = hashlib.sha256(script.encode()).hexdigest()
+        result = self.runner('''
+            mkdir "$raw/input"
+            cp "$raw/tool" "$raw/input/mcsend"
+            cp "$raw/tool" "$raw/input/od09-isolation"
+            bin=$raw/input
+            snapshot_binaries
+            printf changed > "$raw/input/mcsend"
+            test "$bin" = "$raw/bin"
+            test -x "$bin/mcsend"
+            (cd "$bin" && sha256sum -c "$raw/binary-sha256.txt")
+            cat "$raw/binary-sha256.txt"
+            grep -q 'source revision unknown' "$raw/mcsend.buildinfo"
+        ''', {'tool': script})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count(digest), 2)
+
+    def test_environment_lock_excludes_other_opens_and_allows_inheritance(self):
+        result = self.runner('''
+            lock_environment "$raw/environment.lock"
+            # A child reuses the inherited lock description without deadlocking.
+            bash -c 'source "$1"; lock_environment "$2"' fixture \
+                "$repo/test/netns/lib.sh" "$raw/environment.lock"
+            # A fresh open competes, even from a descendant.
+            if bash -c 'exec 9>&-; source "$1"; lock_environment "$2"' fixture \
+                "$repo/test/netns/lib.sh" "$raw/environment.lock"; then exit 9; fi
+            exec 9>&-
+            bash -c 'source "$1"; lock_environment "$2"' fixture \
+                "$repo/test/netns/lib.sh" "$raw/environment.lock"
+        ''')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('environment is in use', result.stderr)
+
+    def test_main_uses_selected_executable_evidence_parent(self):
+        result = self.runner('''
+            fixture=$raw
+            mkdir -p "$fixture/repo/test/netns" "$fixture/output/results" \
+                "$fixture/input" "$fixture/executable evidence"
+            cp /bin/true "$fixture/repo/test/netns/env.sh"
+            cp "$fixture/tool" "$fixture/input/mcsend"
+            cp "$fixture/tool" "$fixture/input/od09-isolation"
+            chmod +x "$fixture/input/"*
+            repo=$fixture/repo; here=$fixture/output
+            require_root() { :; }; require_tools() { :; }; lock_environment() { :; }
+            nsx() { printf '2\\n2\\n3\\n'; }
+            ip() { echo 'mock ip'; }; tcpdump() { echo 'mock tcpdump'; }
+            run_case() {
+                [[ $bin == "$fixture/executable evidence/"*/bin ]]
+                test -x "$bin/mcsend"
+                igmp_join_runs=4
+            }
+            main "$fixture/input" "$fixture/executable evidence"
+            test -f "$out"
+            test "$environment_cleaned" -eq 1
+            grep -q 'Executable provenance' "$out"
+            grep -q 'source revision unknown' "$out"
+        ''', {'tool': '#!/bin/sh\nexit 0\n'})
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def namespace(self, mode):
@@ -144,7 +256,9 @@ esac
             log = path / 'commands'
             environment = {**os.environ, 'PATH': directory + ':' + os.environ['PATH'],
                            'MOCK_MODE': mode, 'MOCK_LOG': str(log)}
-            result = run_shell([str(ENV), 'down'], env=environment)
+            result = run_shell(['-c',
+                                'source "$1"; lock_environment() { :; }; main down',
+                                'fixture', str(ENV)], env=environment)
             return result, log.read_text()
 
     def test_namespace_deletion_success(self):
